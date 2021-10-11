@@ -1,6 +1,7 @@
 from scapy.all import *
 from binascii import hexlify
 import os
+import time
 
 FILE = 'trace-27.pcap' # .pcap file to be analyzed
 
@@ -120,7 +121,6 @@ def clearFile(path):
 def menu():
     print(
         '1 | Print all frames with information\n' +
-        '2 | Print frame\'s nested protocols\n' +
         'q | Terminate the application\n'
     )
 
@@ -147,6 +147,9 @@ def main():
                     comprehensivePrint(x, printFile)
 
                 printFile.close()
+
+                print('Opening output file...')
+                time.sleep(3)
                 os.startfile('.\\consolePrint.txt') # opens file with printed frames
 
             elif operation == 'q':
