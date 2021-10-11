@@ -4,6 +4,7 @@ import os
 import time
 
 FILE = 'trace-27.pcap' # .pcap file to be analyzed
+PRINT_FILE = 'consolePrint.txt' # static file for stroing console print
 
 framesArr = [] # for storing packets as objects
 ethernetProt = {} # ETHERNET II Protocols
@@ -140,8 +141,8 @@ def main():
             print()
 
             if operation == '1':
-                clearFile('.\\consolePrint.txt')
-                printFile = open('.\\consolePrint.txt', 'a')
+                clearFile(f'.\\{PRINT_FILE}')
+                printFile = open(f'.\\{PRINT_FILE}', 'a')
 
                 for x in framesArr:
                     comprehensivePrint(x, printFile)
@@ -150,7 +151,7 @@ def main():
 
                 print('Opening output file...')
                 time.sleep(3)
-                os.startfile('.\\consolePrint.txt') # opens file with printed frames
+                os.startfile(f'.\\{PRINT_FILE}') # opens file with printed frames
 
             elif operation == 'q':
                 break
