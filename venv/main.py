@@ -1,21 +1,17 @@
 from scapy.all import *
 from binascii import hexlify
+import os
 
 FILE = 'trace-27.pcap' # .pcap file to be analyzed
+
 framesArr = [] # for storing packets as objects
 ethernetProt = {} # ETHERNET II Protocols
 ieeeProt = {} # IEEE 802.3 Protocols
 
 
 class pcapFrame():
-    destMAC = None # destination MAC address
-    srcMAC = None # source MAC address
-    protocol = None # internet protocol type
-    srcAddr = None # source IP address
-    destAddr = None # destination IP address
-    buffer = None # binary packet data
     num = None # row number of the frame
-    byteStream = None # byte stream of the frame
+    buffer = None # binary packet data
     frameLength = None # frame length
     frameType = None # frame type
 
@@ -33,22 +29,25 @@ def save_frames(frames):
         i += 1
 
 
-def printBytes(frame: pcapFrame):
-    rawFrame = frame.buffer
-    i = 0
-    for index in range(frame.frameLength):
-        if i % 16 == 0:
-            print()
-        elif i % 8 == 0:
-            print(" ", end="")
+def printBytes(frame: pcapFrame, printFile):
+    try:
+        rawFrame = frame.buffer
+        i = 0
+        for index in range(frame.frameLength):
+            if i % 16 == 0:
+                print(file = printFile)
+            elif i % 8 == 0:
+                print(" ", end="", file = printFile)
 
-        i += 1
-        print(str(hexlify(rawFrame[index:index+1]))[2: -1], end="")
-        print(" ", end="")
+            i += 1
+            print(str(hexlify(rawFrame[index:index+1]))[2: -1], end="", file = printFile)
+            print(" ", end="", file = printFile)
 
-    print()
-    print('=' * 100)
-    print('=' * 100)
+        print(file = printFile)
+        print('=' * 100, file = printFile)
+        print('=' * 100, file = printFile)
+    except FileNotFoundError:
+        print('File was not found')
 
 
 def composeMAC(hexBytes):
@@ -57,36 +56,28 @@ def composeMAC(hexBytes):
     return address
 
 
-def printFrameType(frame: pcapFrame):
+def findFrameType(frame: pcapFrame):
     rawFrame = frame.buffer
     protocol_val = int(str(hexlify(rawFrame[12:14]))[2:-1], 16) # protocol decimal value
 
     if protocol_val > 1500:
-        frame.frameType = 'Ethernet II'
+        return 'Ethernet II'
     else:
         if str(hexlify(rawFrame[14:15]))[2:-1] == 'ff':
-           frame.frameType = 'IEEE 802.3 - Raw'
+            return 'IEEE 802.3 - Raw'
         elif str(hexlify(rawFrame[14:15]))[2:-1] == 'aa':
-            frame.frameType = 'IEEE 802.3 - LLC & SNAP'
+            return 'IEEE 802.3 - LLC & SNAP'
         else:
-            frame.frameType = 'IEEE 802.3 - LLC'
+            return 'IEEE 802.3 - LLC'
 
 
 def initFrame(frame: pcapFrame):
-    pass
+    frame.frameType = findFrameType(frame)
+    return frame
 
 
 def nestedProtocols(frame: pcapFrame):
-    rawFrame = frame.buffer
-
-    if frame.frameType == 'Ethernet II':
-        print(ethernetProt[int(str(hexlify(rawFrame[12:14]))[2:-1], 16)])
-        # 23rd byte (IPv4 nested protocol)
-    elif frame.frameType == 'IEEE 802.3 - Raw':
-        print('IPX')
-    elif frame.frameType == 'IEEE 802.3 - LLS & SNAP':
-        # print(ieeeProt)
-        pass
+    pass
 
 
 def fillProtocols(path, protocols):
@@ -99,25 +90,31 @@ def fillProtocols(path, protocols):
 
     except FileNotFoundError:
         print('Error opening file with protocols')
-        exit(-1)
+        exit(1)
 
 
-def comprehensivePrint(frame: pcapFrame):
-    rawFrame = frame.buffer
+def comprehensivePrint(frame: pcapFrame, printFile):
+    actFrame = initFrame(frame)
+    rawFrame = actFrame.buffer
 
-    print('Frame number:', frame.num) # row number of a frame
+    print('Frame number:', actFrame.num, file = printFile) # row number of a frame
 
     # PACKET LENGTH
-    print(f'Frame pcapAPI length: {frame.frameLength}B')
-    print(f'Length of the frame transferred via media: {64 if frame.frameLength < 60 else frame.frameLength + 4 }B')
+    print(f'Frame pcapAPI length: {actFrame.frameLength}B', file = printFile)
+    print(f'Length of the frame transferred via media: {64 if actFrame.frameLength < 60 else actFrame.frameLength + 4 }B', file = printFile)
 
     # SRC & DEST MAC ADDRESSES
-    print(f'Source MAC address: {composeMAC(frame.buffer[6:12])}')
-    print(f'Destination MAC address: {composeMAC(frame.buffer[:6])}')
-    printFrameType(frame)
-    print(frame.frameType)
-    nestedProtocols(frame)
-    printBytes(frame)
+    print(f'Source MAC address: {composeMAC(rawFrame[6:12])}', file = printFile)
+    print(f'Destination MAC address: {composeMAC(rawFrame[:6])}', file = printFile)
+
+    # FRAME TYPE & BYTE STREAM
+    print(actFrame.frameType, file = printFile)
+    printBytes(actFrame, printFile)
+
+
+def clearFile(path):
+    file = open(path, 'w')
+    file.close()
 
 
 def menu():
@@ -143,9 +140,14 @@ def main():
             print()
 
             if operation == '1':
-                # for x in framesArr:
-                #     comprehensivePrint(x)
-                comprehensivePrint(framesArr[5])
+                clearFile('.\\consolePrint.txt')
+                printFile = open('.\\consolePrint.txt', 'a')
+
+                for x in framesArr:
+                    comprehensivePrint(x, printFile)
+
+                printFile.close()
+                os.startfile('.\\consolePrint.txt') # opens file with printed frames
 
             elif operation == 'q':
                 break
