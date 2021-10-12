@@ -9,6 +9,7 @@ PRINT_FILE = 'consolePrint.txt' # static file for stroing console print
 framesArr = [] # for storing packets as objects
 ethernetProt = {} # ETHERNET II Protocols
 ieeeProt = {} # IEEE 802.3 Protocols
+ipProt = {}
 
 
 class pcapFrame():
@@ -58,6 +59,10 @@ def composeMAC(hexBytes):
     return address
 
 
+def composeIP(buffer):
+    pass
+
+
 def findFrameType(frame: pcapFrame):
     rawFrame = frame.buffer
     protocol_val = int(str(hexlify(rawFrame[12:14]))[2:-1], 16) # protocol decimal value
@@ -79,7 +84,32 @@ def initFrame(frame: pcapFrame):
 
 
 def nestedProtocols(frame: pcapFrame):
-    pass
+    if frame is not None:
+        rawPacket = frame.buffer
+        protocolFlow = None
+
+        if frame.frameType == 'Ethernet II':
+            protocol_dec = int(str(hexlify(rawPacket[12:14]))[2:-1], 16)
+
+            if ethernetProt.get(protocol_dec) is not None:
+                protocolFlow = ethernetProt[protocol_dec]
+
+                if protocol_dec == 2048:
+                    if ipProt.get(int(str(hexlify(rawPacket[23:24]))[2:-1], 16)) is not None:
+                        protocolFlow += " -> "
+                        protocolFlow += ipProt[int(str(hexlify(rawPacket[23:24]))[2:-1], 16)]
+
+                        # todo: deeply analyze nesteed protocols
+            else:
+                protocolFlow = 'Unknown protocol'
+
+        elif frame.frameType == 'IEEE 802.3 - Raw':
+            protocolFlow = "IPX"
+
+        elif frame.frameType == 'IEEE 802.3 - LLC & SNAP':
+            pass
+
+        return protocolFlow
 
 
 def fillProtocols(path, protocols):
@@ -105,13 +135,16 @@ def comprehensivePrint(frame: pcapFrame, printFile):
     print(f'Frame pcapAPI length: {actFrame.frameLength}B', file = printFile)
     print(f'Length of the frame transferred via media: {64 if actFrame.frameLength < 60 else actFrame.frameLength + 4 }B', file = printFile)
 
-    # SRC & DEST MAC ADDRESSES
+    # FRAME TYPE & SRC & DEST MAC ADDRESSES
+    print(actFrame.frameType, file=printFile)
     print(f'Source MAC address: {composeMAC(rawFrame[6:12])}', file = printFile)
     print(f'Destination MAC address: {composeMAC(rawFrame[:6])}', file = printFile)
 
     # FRAME TYPE & BYTE STREAM
-    print(actFrame.frameType, file = printFile)
+    print(nestedProtocols(actFrame), file = printFile)
     printBytes(actFrame, printFile)
+
+    nestedProtocols(actFrame)
 
 
 def clearFile(path):
@@ -132,6 +165,7 @@ def main():
     save_frames(frames)
     fillProtocols('.\\protocols\ETHERNET_protocols.txt', ethernetProt)
     fillProtocols('.\\protocols\IEEE_protocols.txt', ieeeProt)
+    fillProtocols('.\\protocols\\IP_protocols.txt', ipProt)
 
     # USER INTERFACE
     try:
