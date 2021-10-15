@@ -9,7 +9,9 @@ PRINT_FILE = 'consolePrint.txt' # static file for stroing console print
 framesArr = [] # for storing packets as objects
 ethernetProt = {} # ETHERNET II Protocols
 ieeeProt = {} # IEEE 802.3 Protocols
-ipProt = {}
+ipProt = {} # IPv4 Protocols
+tcpProt = {} # TCP protocols
+udpProt = {} # UDP protocols
 
 
 class pcapFrame():
@@ -63,8 +65,12 @@ def composeMAC(hexBytes):
 
 
 def composeIP(buffer):
-    pass
+    result = ''
+    for i in range(len(buffer)):
+        result += str(int(str(hexlify(buffer[i:i+1]))[2:-1], 16))
+        result += '.' if i != (len(buffer) - 1) else ''
 
+    return result
 
 def findFrameType(frame: pcapFrame):
     rawFrame = frame.buffer
@@ -91,23 +97,54 @@ def nestedProtocols(frame: pcapFrame):
         rawPacket = frame.buffer
         protocolFlow = None
 
+        # ----------------- ETHERNET ---------------------
         if frame.frameType == 'Ethernet II':
             protocol_dec = int(str(hexlify(rawPacket[12:14]))[2:-1], 16)
 
             if ethernetProt.get(protocol_dec) is not None:
                 protocolFlow = ethernetProt[protocol_dec]
 
-                if protocol_dec == 2048:
-                    if ipProt.get(int(str(hexlify(rawPacket[23:24]))[2:-1], 16)) is not None:
-                        protocolFlow += " -> " + ipProt[int(str(hexlify(rawPacket[23:24]))[2:-1], 16)]
+                if protocol_dec == 2048: # IPv4 protocol
+                    offsetIhl = protocol_dec = int(str(hexlify(rawPacket[14:15]))[3:-1], 16) * 4 + 14
+                    ipProtocol = ipProt.get(int(str(hexlify(rawPacket[23:24]))[2:-1], 16))
 
+                    sourceIP = composeIP(rawPacket[26:30])
+                    destIP = composeIP(rawPacket[30:34])
+                    print('Source IP address: ', sourceIP)
+                    print('Destination IP address: ', destIP)
+
+                    if ipProtocol is not None:
+                        protocolFlow += " -> " + ipProtocol
+
+                        if ipProtocol == 'TCP': # TCP protocol
+                            port1 = int(str(hexlify(rawPacket[offsetIhl:offsetIhl+2]))[2:-1], 16)
+                            port2 = int(str(hexlify(rawPacket[offsetIhl+2:offsetIhl+4]))[2:-1], 16)
+                            if port1 > port2:
+                                print(f'Source port: {port1}')
+                                print(f'Destination port: {port2}')
+                                protocolFlow += " -> " + tcpProt[port2]
+                            else:
+                                print(f'Source port: {port2}')
+                                print(f'Destination port: {port1}')
+                                protocolFlow += " -> " + tcpProt[port1]
+
+                        elif ipProtocol == 'UDP': # UDP protocol
+                            sourcePort =  int(str(hexlify(rawPacket[offsetIhl:offsetIhl+2]))[2:-1], 16)
+                            destPort = int(str(hexlify(rawPacket[offsetIhl+2:offsetIhl+4]))[2:-1], 16)
+                            print(f'Source port: {sourcePort}')
+                            print(f'Destination port: {destPort}')
+                            protocolFlow += " -> " + udpProt[destPort]
+                    else:
+                        protocolFlow += " -> " + "Unknown protocol"
             else:
                 protocolFlow = 'Unknown protocol'
 
+        # ----------------- IEEE - RAW ---------------------
         elif frame.frameType == 'IEEE 802.3 - Raw':
             protocolFlow = 'IPX'
 
-        elif frame.frameType == 'IEEE 802.3 - LLC & SNAP':
+        # ----------------- IEEE - LLC & SNAP ---------------------
+        elif frame.frameType == 'IEEE 802.3 - LLC & SNAP': # analyse also nested SSAP protocol (EtherType)
             protocolDSAP_dec = int(str(hexlify(rawPacket[14:15]))[2:-1], 16)
             protocolSSAP_dec = int(str(hexlify(rawPacket[15:16]))[2:-1], 16)
 
@@ -147,13 +184,13 @@ def comprehensivePrint(frame: pcapFrame, printFile):
     print(f'Frame pcapAPI length: {actFrame.frameLength}B', file = printFile)
     print(f'Length of the frame transferred via media: {64 if actFrame.frameLength < 60 else actFrame.frameLength + 4 }B', file = printFile)
 
-    # FRAME TYPE & SRC & DEST MAC ADDRESSES
+    # FRAME TYPE & (SRC && DEST MAC ADDRESSES)
     print(actFrame.frameType, file=printFile)
     print(f'Source MAC address: {composeMAC(rawFrame[6:12])}', file = printFile)
     print(f'Destination MAC address: {composeMAC(rawFrame[:6])}', file = printFile)
 
     # FRAME TYPE & BYTE STREAM
-    # print(nestedProtocols(actFrame), file = printFile)
+    print(nestedProtocols(actFrame), file = printFile)
     printBytes(actFrame, printFile)
 
     # nestedProtocols(actFrame)
@@ -180,9 +217,11 @@ def main():
     except NotADirectoryError:
         pass
 
-    # fillProtocols('.\\protocols\\ETHERNET_protocols.txt', ethernetProt)
-    # fillProtocols('.\\protocols\\IEEE_protocols.txt', ieeeProt)
-    # fillProtocols('.\\protocols\\IP_protocols.txt', ipProt)
+    fillProtocols('.\\protocols\\ETHERNET_protocols.txt', ethernetProt) # ETHERNET PROTOCOLS
+    fillProtocols('.\\protocols\\IEEE_protocols.txt', ieeeProt) # IEEE PROTOCOLS
+    fillProtocols('.\\protocols\\IP_protocols.txt', ipProt) # IP PROTOCOLS
+    fillProtocols('.\\protocols\\TCP_protocols.txt', tcpProt) # TCP PROTOCOLS
+    fillProtocols('.\\protocols\\UDP_protocols.txt', udpProt) # UDP PROTOCOLS
 
     # USER INTERFACE
     try:

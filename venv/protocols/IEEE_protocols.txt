@@ -1,15 +1,15 @@
-00;0;Null SAP
-02;2;LLC Sublayer Management / Individual
-03;3;LLC Sublayer Management / Group
-06;6;IP (DoD Internet Protocol)
-0E;14;PROWAY
-42;66;BPDU
-4E;78;MMS EIA-RS 511
-5E;94;ISI IP
-7E;126;X.25 PLP
-8E;142;PROWAY
-AA;170;SNAP
-E0;224;IPX
-F4;244;LAN Management
-FE;254;ISO Network Layer Protocols
-FF;255;Global DSAP
+0000;0;Null SAP
+0002;2;LLC Sublayer Management / Individual
+0003;3;LLC Sublayer Management / Group
+0006;6;IP (DoD Internet Protocol)
+000E;14;PROWAY
+0042;66;BPDU
+004E;78;MMS EIA-RS 511
+005E;94;ISI IP
+007E;126;X.25 PLP
+008E;142;PROWAY
+00AA;170;SNAP
+00E0;224;IPX
+00F4;244;LAN Management
+00FE;254;ISO Network Layer Protocols
+00FF;255;Global DSAP
