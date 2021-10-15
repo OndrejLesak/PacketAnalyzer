@@ -92,7 +92,7 @@ def initFrame(frame: pcapFrame):
     return frame
 
 
-def nestedProtocols(frame: pcapFrame):
+def nestedProtocols(frame: pcapFrame, printFile):
     if frame is not None:
         rawPacket = frame.buffer
         protocolFlow = None
@@ -102,7 +102,7 @@ def nestedProtocols(frame: pcapFrame):
             protocol_dec = int(str(hexlify(rawPacket[12:14]))[2:-1], 16)
 
             if ethernetProt.get(protocol_dec) is not None:
-                protocolFlow = ethernetProt[protocol_dec]
+                print(ethernetProt[protocol_dec], file = printFile)
 
                 if protocol_dec == 2048: # IPv4 protocol
                     offsetIhl = protocol_dec = int(str(hexlify(rawPacket[14:15]))[3:-1], 16) * 4 + 14
@@ -110,38 +110,52 @@ def nestedProtocols(frame: pcapFrame):
 
                     sourceIP = composeIP(rawPacket[26:30])
                     destIP = composeIP(rawPacket[30:34])
-                    print('Source IP address: ', sourceIP)
-                    print('Destination IP address: ', destIP)
+                    print('Source IP address: ', sourceIP, file = printFile)
+                    print('Destination IP address: ', destIP, file = printFile)
 
                     if ipProtocol is not None:
-                        protocolFlow += " -> " + ipProtocol
+                        print(ipProtocol, file = printFile)
 
                         if ipProtocol == 'TCP': # TCP protocol
                             port1 = int(str(hexlify(rawPacket[offsetIhl:offsetIhl+2]))[2:-1], 16)
                             port2 = int(str(hexlify(rawPacket[offsetIhl+2:offsetIhl+4]))[2:-1], 16)
                             if port1 > port2:
-                                print(f'Source port: {port1}')
-                                print(f'Destination port: {port2}')
-                                protocolFlow += " -> " + tcpProt[port2]
+                                print(f'Source port: {port1}', file = printFile)
+                                print(f'Destination port: {port2}', file = printFile)
+                                print(tcpProt[port2] if tcpProt.get(port2) is not None else 'Unknown protocol', file = printFile)
                             else:
-                                print(f'Source port: {port2}')
-                                print(f'Destination port: {port1}')
-                                protocolFlow += " -> " + tcpProt[port1]
+                                print(f'Source port: {port2}', file = printFile)
+                                print(f'Destination port: {port1}', file = printFile)
+                                print(tcpProt[port1] if tcpProt.get(port1) is not None else 'Unknown protocol', file = printFile)
 
                         elif ipProtocol == 'UDP': # UDP protocol
                             sourcePort =  int(str(hexlify(rawPacket[offsetIhl:offsetIhl+2]))[2:-1], 16)
                             destPort = int(str(hexlify(rawPacket[offsetIhl+2:offsetIhl+4]))[2:-1], 16)
-                            print(f'Source port: {sourcePort}')
-                            print(f'Destination port: {destPort}')
-                            protocolFlow += " -> " + udpProt[destPort]
+                            print(f'Source port: {sourcePort}', file = printFile)
+                            print(f'Destination port: {destPort}', file = printFile)
+                            print(udpProt[destPort] if udpProt.get(destPort) is not None else 'Unknown protocol', file = printFile)
                     else:
-                        protocolFlow += " -> " + "Unknown protocol"
+                        print("Unknown protocol", file = printFile)
+
+                elif protocol_dec == 2054:
+                    operation = int(str(hexlify(rawPacket[20:22]))[2:-1], 16) # request/ reply
+                    senderMAC = composeMAC(rawPacket[22:28])
+                    senderIP = composeIP(rawPacket[28:32])
+                    targetMAC = composeMAC(rawPacket[32:38])
+                    targetIP = composeIP(rawPacket[38:42])
+
+                    print('Request' if operation == 1 else 'Response', file = printFile)
+                    print(f'Sender MAC: {senderMAC}', file = printFile)
+                    print(f'Sender IP: {senderIP}', file = printFile)
+                    print(f'Target MAC: {targetMAC}', file = printFile)
+                    print(f'Target IP: {targetIP}', file = printFile)
+
             else:
-                protocolFlow = 'Unknown protocol'
+                print('Unknown protocol', file = printFile)
 
         # ----------------- IEEE - RAW ---------------------
         elif frame.frameType == 'IEEE 802.3 - Raw':
-            protocolFlow = 'IPX'
+            print('IPX', file = printFile)
 
         # ----------------- IEEE - LLC & SNAP ---------------------
         elif frame.frameType == 'IEEE 802.3 - LLC & SNAP': # analyse also nested SSAP protocol (EtherType)
@@ -149,16 +163,16 @@ def nestedProtocols(frame: pcapFrame):
             protocolSSAP_dec = int(str(hexlify(rawPacket[15:16]))[2:-1], 16)
 
             if ieeeProt.get(protocolDSAP_dec) is not None:
-                protocolFlow = 'DSAP: ' + ieeeProt[protocolDSAP_dec] + '\n'
+               print('DSAP: ' + ieeeProt[protocolDSAP_dec] + '\n', file = printFile)
             else:
-                protocolFlow = 'DSAP: Unknown\n'
+               print('DSAP: Unknown\n', file = printFile)
 
             if ieeeProt.get(protocolSSAP_dec) is not None:
-                protocolFlow += 'SSAP: ' + ieeeProt[protocolSSAP_dec] + '\n'
+                print('SSAP: ' + ieeeProt[protocolSSAP_dec] + '\n', file = printFile)
             else:
-                protocolFlow += 'SSAP: Unknown\n'
+               print('SSAP: Unknown\n', file = printFile)
 
-        return protocolFlow
+
 
 
 def fillProtocols(path, protocols):
@@ -190,7 +204,7 @@ def comprehensivePrint(frame: pcapFrame, printFile):
     print(f'Destination MAC address: {composeMAC(rawFrame[:6])}', file = printFile)
 
     # FRAME TYPE & BYTE STREAM
-    print(nestedProtocols(actFrame), file = printFile)
+    nestedProtocols(actFrame, printFile)
     printBytes(actFrame, printFile)
 
     # nestedProtocols(actFrame)
