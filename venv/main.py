@@ -110,30 +110,28 @@ def nestedProtocols(frame: pcapFrame, printFile):
 
                     sourceIP = composeIP(rawPacket[26:30])
                     destIP = composeIP(rawPacket[30:34])
-                    print('Source IP address: ', sourceIP, file = printFile)
-                    print('Destination IP address: ', destIP, file = printFile)
+                    print(f'Source IP: {sourceIP}', file = printFile)
+                    print(f'Destination IP: {destIP}', file = printFile)
 
                     if ipProtocol is not None:
                         print(ipProtocol, file = printFile)
 
                         if ipProtocol == 'TCP': # TCP protocol
-                            port1 = int(str(hexlify(rawPacket[offsetIhl:offsetIhl+2]))[2:-1], 16)
-                            port2 = int(str(hexlify(rawPacket[offsetIhl+2:offsetIhl+4]))[2:-1], 16)
-                            if port1 > port2:
-                                print(f'Source port: {port1}', file = printFile)
-                                print(f'Destination port: {port2}', file = printFile)
-                                print(tcpProt[port2] if tcpProt.get(port2) is not None else 'Unknown protocol', file = printFile)
+                            sourcePort = int(str(hexlify(rawPacket[offsetIhl:offsetIhl+2]))[2:-1], 16)
+                            destPort = int(str(hexlify(rawPacket[offsetIhl+2:offsetIhl+4]))[2:-1], 16)
+                            print(f'Source port: {sourcePort}', file = printFile)
+                            print(f'Destination port: {destPort}', file = printFile)
+                            if sourcePort > destPort: # nested protocol
+                                print(tcpProt[destPort] if tcpProt.get(destPort) is not None else 'Unknown protocol', file = printFile)
                             else:
-                                print(f'Source port: {port2}', file = printFile)
-                                print(f'Destination port: {port1}', file = printFile)
-                                print(tcpProt[port1] if tcpProt.get(port1) is not None else 'Unknown protocol', file = printFile)
+                                print(tcpProt[sourcePort] if tcpProt.get(sourcePort) is not None else 'Unknown protocol', file = printFile)
 
                         elif ipProtocol == 'UDP': # UDP protocol
                             sourcePort =  int(str(hexlify(rawPacket[offsetIhl:offsetIhl+2]))[2:-1], 16)
                             destPort = int(str(hexlify(rawPacket[offsetIhl+2:offsetIhl+4]))[2:-1], 16)
                             print(f'Source port: {sourcePort}', file = printFile)
                             print(f'Destination port: {destPort}', file = printFile)
-                            print(udpProt[destPort] if udpProt.get(destPort) is not None else 'Unknown protocol', file = printFile)
+                            print(udpProt[destPort] if udpProt.get(destPort) is not None else 'Unknown protocol', file = printFile) # nested protocol
                     else:
                         print("Unknown protocol", file = printFile)
 
@@ -145,9 +143,9 @@ def nestedProtocols(frame: pcapFrame, printFile):
                     targetIP = composeIP(rawPacket[38:42])
 
                     print('Request' if operation == 1 else 'Response', file = printFile)
-                    print(f'Sender MAC: {senderMAC}', file = printFile)
+                    print(f'Sender MAC: {senderMAC}', file = printFile, end = '\t')
                     print(f'Sender IP: {senderIP}', file = printFile)
-                    print(f'Target MAC: {targetMAC}', file = printFile)
+                    print(f'Target MAC: {targetMAC}', file = printFile, end = '\t')
                     print(f'Target IP: {targetIP}', file = printFile)
 
             else:
@@ -158,21 +156,22 @@ def nestedProtocols(frame: pcapFrame, printFile):
             print('IPX', file = printFile)
 
         # ----------------- IEEE - LLC & SNAP ---------------------
-        elif frame.frameType == 'IEEE 802.3 - LLC & SNAP': # analyse also nested SSAP protocol (EtherType)
+        elif frame.frameType == 'IEEE 802.3 - LLC & SNAP':
             protocolDSAP_dec = int(str(hexlify(rawPacket[14:15]))[2:-1], 16)
             protocolSSAP_dec = int(str(hexlify(rawPacket[15:16]))[2:-1], 16)
+            print(f'DSAP: {ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else "Unknown"}', end = '\t', file = printFile)
+            print(f'SSAP: {ieeeProt[protocolSSAP_dec] if ieeeProt.get(protocolSSAP_dec) is not None else "Unknown"}', file = printFile)
 
-            if ieeeProt.get(protocolDSAP_dec) is not None:
-               print('DSAP: ' + ieeeProt[protocolDSAP_dec] + '\n', file = printFile)
-            else:
-               print('DSAP: Unknown\n', file = printFile)
+            print(ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else 'Unknown protocol', file = printFile)  # nested protocol
+            # analyse also nested SSAP protocol (EtherType)
 
-            if ieeeProt.get(protocolSSAP_dec) is not None:
-                print('SSAP: ' + ieeeProt[protocolSSAP_dec] + '\n', file = printFile)
-            else:
-               print('SSAP: Unknown\n', file = printFile)
+        elif frame.frameType == 'IEEE 802.3 - LLC':
+            protocolDSAP_dec = int(str(hexlify(rawPacket[14:15]))[2:-1], 16)
+            protocolSSAP_dec = int(str(hexlify(rawPacket[15:16]))[2:-1], 16)
+            print(f'DSAP: {ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else "Unknown"}', end = '\t', file = printFile)
+            print(f'SSAP: {ieeeProt[protocolSSAP_dec] if ieeeProt.get(protocolSSAP_dec) is not None else "Unknown"}', file = printFile)
 
-
+            print(ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else 'Unknown protocol', file = printFile) # nested protocol
 
 
 def fillProtocols(path, protocols):
