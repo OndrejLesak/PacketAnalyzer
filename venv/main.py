@@ -163,15 +163,15 @@ def nestedProtocols(frame: pcapFrame, printFile):
             print(f'SSAP: {ieeeProt[protocolSSAP_dec] if ieeeProt.get(protocolSSAP_dec) is not None else "Unknown"}', file = printFile)
 
             print(ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else 'Unknown protocol', file = printFile)  # nested protocol
-            # analyse also nested SSAP protocol (EtherType)
+            etherType = int(str(hexlify(rawPacket[20:22]))[2:-1], 16)
+            print(ethernetProt[etherType] if ethernetProt.get(etherType) is not None else 'Unknown EtherType', file = printFile)
 
         elif frame.frameType == 'IEEE 802.3 - LLC':
             protocolDSAP_dec = int(str(hexlify(rawPacket[14:15]))[2:-1], 16)
             protocolSSAP_dec = int(str(hexlify(rawPacket[15:16]))[2:-1], 16)
             print(f'DSAP: {ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else "Unknown"}', end = '\t', file = printFile)
             print(f'SSAP: {ieeeProt[protocolSSAP_dec] if ieeeProt.get(protocolSSAP_dec) is not None else "Unknown"}', file = printFile)
-
-            print(ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else 'Unknown protocol', file = printFile) # nested protocol
+            print(ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else 'Unknown protocol', file = printFile) # nested protocol 20:22
 
 
 def fillProtocols(path, protocols):
@@ -205,8 +205,6 @@ def comprehensivePrint(frame: pcapFrame, printFile):
     # FRAME TYPE & BYTE STREAM
     nestedProtocols(actFrame, printFile)
     printBytes(actFrame, printFile)
-
-    # nestedProtocols(actFrame)
 
 
 def clearFile(path):
