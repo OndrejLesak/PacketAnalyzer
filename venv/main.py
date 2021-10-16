@@ -13,6 +13,8 @@ ipProt = {} # IPv4 Protocols
 tcpProt = {} # TCP protocols
 udpProt = {} # UDP protocols
 
+ipList = {} # list of all unique IP addresses
+
 
 class pcapFrame():
     num = None # row number of the frame
@@ -72,6 +74,14 @@ def composeIP(buffer):
 
     return result
 
+def countIPs(address):
+    if address in ipList:
+        value = ipList[address]
+        ipList[address] = value + 1
+    else:
+        ipList[address] = 1
+
+
 def findFrameType(frame: pcapFrame):
     rawFrame = frame.buffer
     protocol_val = int(str(hexlify(rawFrame[12:14]))[2:-1], 16) # protocol decimal value
@@ -95,7 +105,6 @@ def initFrame(frame: pcapFrame):
 def nestedProtocols(frame: pcapFrame, printFile):
     if frame is not None:
         rawPacket = frame.buffer
-        protocolFlow = None
 
         # ----------------- ETHERNET ---------------------
         if frame.frameType == 'Ethernet II':
@@ -112,6 +121,8 @@ def nestedProtocols(frame: pcapFrame, printFile):
                     destIP = composeIP(rawPacket[30:34])
                     print(f'Source IP: {sourceIP}', file = printFile)
                     print(f'Destination IP: {destIP}', file = printFile)
+
+                    countIPs(sourceIP) # count all the source IPs
 
                     if ipProtocol is not None:
                         print(ipProtocol, file = printFile)
@@ -174,7 +185,21 @@ def nestedProtocols(frame: pcapFrame, printFile):
             print(ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else 'Unknown protocol', file = printFile) # nested protocol 20:22
 
 
-def fillProtocols(path, protocols):
+def printIPList(printFile):
+    highestNumber = 0
+    highestIP = None
+
+    print('IP adresy odosielajucich uzlov', file = printFile)
+    for i in ipList.keys():
+        print(i, file = printFile)
+        if ipList.get(i) > highestNumber:
+            highestNumber = ipList.get(i)
+            highestIP = i
+
+    print(f'\nAdresa uzla s najvacsim poctom odoslanych packetov: {highestIP}\t {highestNumber} packetov', file = printFile)
+
+
+def fillProtocols(path, protocols): # TODO: make it refresh lists while program runs
     try:
         file = open(path, 'r')
         for line in file:
@@ -263,6 +288,7 @@ def main():
                 for x in framesArr:
                     comprehensivePrint(x, printFile)
 
+                printIPList(printFile)
                 printFile.close()
 
                 print('Opening output file...\n')
