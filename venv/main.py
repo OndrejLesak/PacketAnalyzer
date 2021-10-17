@@ -38,14 +38,18 @@ class pcapFrame():
 
 
 class TCPComm():
-    def __init__(self, srcIp, destIp, srcPort, destPort, frame):
-        self.sourceIP = srcIp
-        self.destinationIP = destIp
-        self.sourcePort = srcPort
-        self.destinationPort = destPort
+    def __init__(self, srcIp, destIp, srcPort, destPort, frame, flags):
+        self.srcIP = srcIp
+        self.destIP = destIp
+        self.srcPort = srcPort
+        self.destPort = destPort
+        self.flags = flags
         self.isComplete = False
         self.relatedFrame = frame
-        self.communication = [] # related packets
+        self.comm = [] # related communication packets
+
+    def append_packet(self, packet):
+        self.comm.append(packet)
 
 
 def save_frames(frames):
@@ -160,7 +164,8 @@ def nestedProtocols(frame: pcapFrame):
                                 wnProtocol = wnProt[sourcePort] if wnProt.get(sourcePort) is not None else 'Unknown protocol'
                             print(wnProtocol)
 
-                            tcpFrame = TCPComm(sourceIP, destIP, sourcePort, destPort, frame) # partial initialization of TCP communication
+                            tcpFrame = TCPComm(sourceIP, destIP, sourcePort, destPort,\
+                                               frame, str(hexlify(rawPacket[offsetIhl+13:offsetIhl+14]))[2:-1]) # partial initialization of TCP communication
 
                             if wnProtocol == 'HTTP':
                                 http_packets.append(tcpFrame)
@@ -229,21 +234,37 @@ def nestedProtocols(frame: pcapFrame):
             protocolSSAP_dec = int(str(hexlify(rawPacket[15:16]))[2:-1], 16)
             print(f'DSAP: {ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else "Unknown"}', end = '\t')
             print(f'SSAP: {ieeeProt[protocolSSAP_dec] if ieeeProt.get(protocolSSAP_dec) is not None else "Unknown"}')
-            print(ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else 'Unknown protocol') # nested protocol 20:22
+            print(ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else 'Unknown protocol') # nested protocol
 
 
 def initTCP(communication):
-    for packet in range(len(communication)):
-        actPacket = communication[packet]
+    temp_comm = communication
+
+    # group related packets
+    for packet in range(len(temp_comm)):
+        actPacket: TCPComm = temp_comm[packet]
 
         if actPacket is not None:
-            i = packet
-            for i in range(len(communication)):
-                # if (communication[i].sourceIp == actPacket.sourceIP and communication[i].destinationIP == actPacket.destinationIP)
-                pass
+            for i in range(packet+1, len(temp_comm)):
+                if temp_comm[i] is None:
+                    continue
+                elif (actPacket.srcIP == temp_comm[i].srcIP and actPacket.destIP == temp_comm[i].destIP and actPacket.srcPort == temp_comm[i].srcPort and actPacket.destPort == temp_comm[i].destPort)\
+                    or (actPacket.srcIP == temp_comm[i].destIP and actPacket.destIP == temp_comm[i].srcIP and actPacket.srcPort == temp_comm[i].destPort and actPacket.destPort == temp_comm[i].srcPort):
+                    actPacket.append_packet(temp_comm[i])
+                    temp_comm[i] = None
         else:
             continue
 
+        tcp_packet_list.append(actPacket)
+        temp_comm[packet] = None # empty the list
+
+
+        # ANALYSIS
+        if len(tcp_packet_list) > 0:
+            for commun in tcp_packet_list:
+                if len(commun.comm) > 0:
+                    for member in commun.comm:
+                      continue
 
 
 def printIPList():
@@ -353,6 +374,8 @@ def main():
                 print('Opening file...')
                 os.startfile(f'.\\{PRINT_FILE}')  # opens file with printed frames
                 time.sleep(2)
+
+                initTCP(http_packets)
 
             elif operation == 'q':
                 break
