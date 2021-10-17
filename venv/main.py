@@ -16,17 +16,36 @@ wnProt = {} # WELL-KNOWN protocols
 
 ipList = {} # list of all unique IP addresses
 
+http_packets = []
+https_packets = []
+telnet_packets = []
+ssh_packets = []
+ftpC_packets = []
+ftpD_packets = []
+tcp_packet_list = []
+
+tftp_packets = []
+icmp_packets = []
+arp_packets = []
+
 
 class pcapFrame():
-    num = None # row number of the frame
-    buffer = None # binary packet data
-    frameLength = None # frame length
-    frameType = None # frame type
-
     def __init__(self, num, buffer):
         self.num = num
         self.buffer = buffer
         self.frameLength = len(buffer)
+        self.frameType = None
+
+
+class TCPComm():
+    def __init__(self, srcIp, destIp, srcPort, destPort, frame):
+        self.sourceIP = srcIp
+        self.destinationIP = destIp
+        self.sourcePort = srcPort
+        self.destinationPort = destPort
+        self.isComplete = False
+        self.relatedFrame = frame
+        self.communication = [] # related packets
 
 
 def save_frames(frames):
@@ -139,15 +158,36 @@ def nestedProtocols(frame: pcapFrame):
                                 wnProtocol = wnProt[destPort] if wnProt.get(destPort) is not None else 'Unknown protocol'
                             else:
                                 wnProtocol = wnProt[sourcePort] if wnProt.get(sourcePort) is not None else 'Unknown protocol'
+                            print(wnProtocol)
 
-                            print(wnProt)
+                            tcpFrame = TCPComm(sourceIP, destIP, sourcePort, destPort, frame) # partial initialization of TCP communication
+
+                            if wnProtocol == 'HTTP':
+                                http_packets.append(tcpFrame)
+                            elif wnProtocol == 'HTTPS (SS1)':
+                                https_packets.append(tcpFrame)
+                            elif wnProtocol == 'TELNET':
+                                telnet_packets.append(tcpFrame)
+                            elif wnProtocol == 'SSH':
+                                ssh_packets.append(tcpFrame)
+                            elif wnProtocol == 'FTP-DATA':
+                                ftpD_packets.append(tcpFrame)
+                            elif wnProtocol == 'FTP-CONTROL':
+                                ftpC_packets.append(tcpFrame)
 
                         elif ipProtocol == 'UDP': # UDP protocol
                             sourcePort =  int(str(hexlify(rawPacket[offsetIhl:offsetIhl+2]))[2:-1], 16)
                             destPort = int(str(hexlify(rawPacket[offsetIhl+2:offsetIhl+4]))[2:-1], 16)
+                            wnProtocol = None
                             print(f'Source port: {sourcePort}')
                             print(f'Destination port: {destPort}')
-                            print(wnProt[destPort] if wnProt.get(destPort) is not None else 'Unknown protocol') # nested protocol
+
+                            wnProtocol = wnProt[destPort] if wnProt.get(destPort) is not None else 'Unknown protocol'
+                            print(wnProtocol) # nested protocol
+
+                            if wnProtocol == 'TFTP':
+                                tftp_packets.append(frame)
+
                     else:
                         print("Unknown protocol")
 
@@ -163,6 +203,8 @@ def nestedProtocols(frame: pcapFrame):
                     print(f'Sender IP: {senderIP}')
                     print(f'Target MAC: {targetMAC}', end = '\t')
                     print(f'Target IP: {targetIP}')
+
+                    arp_packets.append(frame)
 
             else:
                 print('Unknown protocol')
@@ -188,6 +230,20 @@ def nestedProtocols(frame: pcapFrame):
             print(f'DSAP: {ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else "Unknown"}', end = '\t')
             print(f'SSAP: {ieeeProt[protocolSSAP_dec] if ieeeProt.get(protocolSSAP_dec) is not None else "Unknown"}')
             print(ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else 'Unknown protocol') # nested protocol 20:22
+
+
+def initTCP(communication):
+    for packet in range(len(communication)):
+        actPacket = communication[packet]
+
+        if actPacket is not None:
+            i = packet
+            for i in range(len(communication)):
+                # if (communication[i].sourceIp == actPacket.sourceIP and communication[i].destinationIP == actPacket.destinationIP)
+                pass
+        else:
+            continue
+
 
 
 def printIPList():
