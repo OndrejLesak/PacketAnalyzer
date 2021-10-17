@@ -2,16 +2,17 @@ from scapy.all import *
 from binascii import hexlify
 import os
 import time
+import sys
 
 FILE = None # .pcap file to be analyzed
 PRINT_FILE = 'consolePrint.txt' # static file for stroing console print
+DEFAULT_STDOUT = sys.stdout
 
 framesArr = [] # for storing packets as objects
 ethernetProt = {} # ETHERNET II Protocols
 ieeeProt = {} # IEEE 802.3 Protocols
 ipProt = {} # IPv4 Protocols
-tcpProt = {} # TCP protocols
-udpProt = {} # UDP protocols
+wnProt = {} # WELL-KNOWN protocols
 
 ipList = {} # list of all unique IP addresses
 
@@ -38,23 +39,23 @@ def save_frames(frames):
         i += 1
 
 
-def printBytes(frame: pcapFrame, printFile):
+def printBytes(frame: pcapFrame):
     try:
         rawFrame = frame.buffer
         i = 0
         for index in range(frame.frameLength):
             if i % 16 == 0:
-                print(file = printFile)
+                print()
             elif i % 8 == 0:
-                print(" ", end="", file = printFile)
+                print(" ", end="")
 
             i += 1
-            print(str(hexlify(rawFrame[index:index+1]))[2: -1], end="", file = printFile)
-            print(" ", end="", file = printFile)
+            print(str(hexlify(rawFrame[index:index+1]))[2: -1], end="")
+            print(" ", end="")
 
-        print(file = printFile)
-        print('=' * 100, file = printFile)
-        print('=' * 100, file = printFile)
+        print()
+        print('=' * 100)
+        print('=' * 100)
 
     except FileNotFoundError:
         print('File was not found')
@@ -73,6 +74,7 @@ def composeIP(buffer):
         result += '.' if i != (len(buffer) - 1) else ''
 
     return result
+
 
 def countIPs(address):
     if address in ipList:
@@ -102,7 +104,7 @@ def initFrame(frame: pcapFrame):
     return frame
 
 
-def nestedProtocols(frame: pcapFrame, printFile):
+def nestedProtocols(frame: pcapFrame):
     if frame is not None:
         rawPacket = frame.buffer
 
@@ -111,7 +113,7 @@ def nestedProtocols(frame: pcapFrame, printFile):
             protocol_dec = int(str(hexlify(rawPacket[12:14]))[2:-1], 16)
 
             if ethernetProt.get(protocol_dec) is not None:
-                print(ethernetProt[protocol_dec], file = printFile)
+                print(ethernetProt[protocol_dec])
 
                 if protocol_dec == 2048: # IPv4 protocol
                     offsetIhl = protocol_dec = int(str(hexlify(rawPacket[14:15]))[3:-1], 16) * 4 + 14
@@ -119,32 +121,35 @@ def nestedProtocols(frame: pcapFrame, printFile):
 
                     sourceIP = composeIP(rawPacket[26:30])
                     destIP = composeIP(rawPacket[30:34])
-                    print(f'Source IP: {sourceIP}', file = printFile)
-                    print(f'Destination IP: {destIP}', file = printFile)
+                    print(f'Source IP: {sourceIP}')
+                    print(f'Destination IP: {destIP}')
 
                     countIPs(sourceIP) # count all the source IPs
 
                     if ipProtocol is not None:
-                        print(ipProtocol, file = printFile)
+                        print(ipProtocol)
 
                         if ipProtocol == 'TCP': # TCP protocol
                             sourcePort = int(str(hexlify(rawPacket[offsetIhl:offsetIhl+2]))[2:-1], 16)
                             destPort = int(str(hexlify(rawPacket[offsetIhl+2:offsetIhl+4]))[2:-1], 16)
-                            print(f'Source port: {sourcePort}', file = printFile)
-                            print(f'Destination port: {destPort}', file = printFile)
+                            wnProtocol = None
+                            print(f'Source port: {sourcePort}')
+                            print(f'Destination port: {destPort}')
                             if sourcePort > destPort: # nested protocol
-                                print(tcpProt[destPort] if tcpProt.get(destPort) is not None else 'Unknown protocol', file = printFile)
+                                wnProtocol = wnProt[destPort] if wnProt.get(destPort) is not None else 'Unknown protocol'
                             else:
-                                print(tcpProt[sourcePort] if tcpProt.get(sourcePort) is not None else 'Unknown protocol', file = printFile)
+                                wnProtocol = wnProt[sourcePort] if wnProt.get(sourcePort) is not None else 'Unknown protocol'
+
+                            print(wnProt)
 
                         elif ipProtocol == 'UDP': # UDP protocol
                             sourcePort =  int(str(hexlify(rawPacket[offsetIhl:offsetIhl+2]))[2:-1], 16)
                             destPort = int(str(hexlify(rawPacket[offsetIhl+2:offsetIhl+4]))[2:-1], 16)
-                            print(f'Source port: {sourcePort}', file = printFile)
-                            print(f'Destination port: {destPort}', file = printFile)
-                            print(udpProt[destPort] if udpProt.get(destPort) is not None else 'Unknown protocol', file = printFile) # nested protocol
+                            print(f'Source port: {sourcePort}')
+                            print(f'Destination port: {destPort}')
+                            print(wnProt[destPort] if wnProt.get(destPort) is not None else 'Unknown protocol') # nested protocol
                     else:
-                        print("Unknown protocol", file = printFile)
+                        print("Unknown protocol")
 
                 elif protocol_dec == 2054:
                     operation = int(str(hexlify(rawPacket[20:22]))[2:-1], 16) # request/ reply
@@ -153,50 +158,50 @@ def nestedProtocols(frame: pcapFrame, printFile):
                     targetMAC = composeMAC(rawPacket[32:38])
                     targetIP = composeIP(rawPacket[38:42])
 
-                    print('Request' if operation == 1 else 'Response', file = printFile)
-                    print(f'Sender MAC: {senderMAC}', file = printFile, end = '\t')
-                    print(f'Sender IP: {senderIP}', file = printFile)
-                    print(f'Target MAC: {targetMAC}', file = printFile, end = '\t')
-                    print(f'Target IP: {targetIP}', file = printFile)
+                    print('Request' if operation == 1 else 'Response')
+                    print(f'Sender MAC: {senderMAC}', end = '\t')
+                    print(f'Sender IP: {senderIP}')
+                    print(f'Target MAC: {targetMAC}', end = '\t')
+                    print(f'Target IP: {targetIP}')
 
             else:
-                print('Unknown protocol', file = printFile)
+                print('Unknown protocol')
 
         # ----------------- IEEE - RAW ---------------------
         elif frame.frameType == 'IEEE 802.3 - Raw':
-            print('IPX', file = printFile)
+            print('IPX')
 
         # ----------------- IEEE - LLC & SNAP ---------------------
         elif frame.frameType == 'IEEE 802.3 - LLC & SNAP':
             protocolDSAP_dec = int(str(hexlify(rawPacket[14:15]))[2:-1], 16)
             protocolSSAP_dec = int(str(hexlify(rawPacket[15:16]))[2:-1], 16)
-            print(f'DSAP: {ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else "Unknown"}', end = '\t', file = printFile)
-            print(f'SSAP: {ieeeProt[protocolSSAP_dec] if ieeeProt.get(protocolSSAP_dec) is not None else "Unknown"}', file = printFile)
+            print(f'DSAP: {ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else "Unknown"}', end = '\t')
+            print(f'SSAP: {ieeeProt[protocolSSAP_dec] if ieeeProt.get(protocolSSAP_dec) is not None else "Unknown"}')
 
-            print(ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else 'Unknown protocol', file = printFile)  # nested protocol
+            print(ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else 'Unknown protocol')  # nested protocol
             etherType = int(str(hexlify(rawPacket[20:22]))[2:-1], 16)
-            print(ethernetProt[etherType] if ethernetProt.get(etherType) is not None else 'Unknown EtherType', file = printFile)
+            print(ethernetProt[etherType] if ethernetProt.get(etherType) is not None else 'Unknown EtherType')
 
         elif frame.frameType == 'IEEE 802.3 - LLC':
             protocolDSAP_dec = int(str(hexlify(rawPacket[14:15]))[2:-1], 16)
             protocolSSAP_dec = int(str(hexlify(rawPacket[15:16]))[2:-1], 16)
-            print(f'DSAP: {ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else "Unknown"}', end = '\t', file = printFile)
-            print(f'SSAP: {ieeeProt[protocolSSAP_dec] if ieeeProt.get(protocolSSAP_dec) is not None else "Unknown"}', file = printFile)
-            print(ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else 'Unknown protocol', file = printFile) # nested protocol 20:22
+            print(f'DSAP: {ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else "Unknown"}', end = '\t')
+            print(f'SSAP: {ieeeProt[protocolSSAP_dec] if ieeeProt.get(protocolSSAP_dec) is not None else "Unknown"}')
+            print(ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else 'Unknown protocol') # nested protocol 20:22
 
 
-def printIPList(printFile):
+def printIPList():
     highestNumber = 0
     highestIP = None
 
-    print('IP adresy odosielajucich uzlov', file = printFile)
+    print('IP adresy odosielajucich uzlov')
     for i in ipList.keys():
-        print(i, file = printFile)
+        print(i)
         if ipList.get(i) > highestNumber:
             highestNumber = ipList.get(i)
             highestIP = i
 
-    print(f'\nAdresa uzla s najvacsim poctom odoslanych packetov: {highestIP}\t {highestNumber} packetov', file = printFile)
+    print(f'\nAdresa uzla s najvacsim poctom odoslanych packetov: {highestIP}\t {highestNumber} packetov')
 
 
 def fillProtocols(path, protocols): # TODO: make it refresh lists while program runs
@@ -212,24 +217,24 @@ def fillProtocols(path, protocols): # TODO: make it refresh lists while program 
         exit(1)
 
 
-def comprehensivePrint(frame: pcapFrame, printFile):
+def comprehensivePrint(frame: pcapFrame):
     actFrame = initFrame(frame)
     rawFrame = actFrame.buffer
 
-    print('Frame number:', actFrame.num, file = printFile) # row number of a frame
+    print('Frame number:', actFrame.num) # row number of a frame
 
     # PACKET LENGTH
-    print(f'Frame pcapAPI length: {actFrame.frameLength}B', file = printFile)
-    print(f'Length of the frame transferred via media: {64 if actFrame.frameLength < 60 else actFrame.frameLength + 4 }B', file = printFile)
+    print(f'Frame pcapAPI length: {actFrame.frameLength}B')
+    print(f'Length of the frame transferred via media: {64 if actFrame.frameLength < 60 else actFrame.frameLength + 4 }B')
 
     # FRAME TYPE & (SRC && DEST MAC ADDRESSES)
-    print(actFrame.frameType, file=printFile)
-    print(f'Source MAC address: {composeMAC(rawFrame[6:12])}', file = printFile)
-    print(f'Destination MAC address: {composeMAC(rawFrame[:6])}', file = printFile)
+    print(actFrame.frameType)
+    print(f'Source MAC address: {composeMAC(rawFrame[6:12])}')
+    print(f'Destination MAC address: {composeMAC(rawFrame[:6])}')
 
     # FRAME TYPE & BYTE STREAM
-    nestedProtocols(actFrame, printFile)
-    printBytes(actFrame, printFile)
+    nestedProtocols(actFrame)
+    printBytes(actFrame)
 
 
 def clearFile(path):
@@ -256,20 +261,16 @@ def main():
     fillProtocols('.\\protocols\\ETHERNET_protocols.txt', ethernetProt) # ETHERNET PROTOCOLS
     fillProtocols('.\\protocols\\IEEE_protocols.txt', ieeeProt) # IEEE PROTOCOLS
     fillProtocols('.\\protocols\\IP_protocols.txt', ipProt) # IP PROTOCOLS
-    fillProtocols('.\\protocols\\TCP_protocols.txt', tcpProt) # TCP PROTOCOLS
-    fillProtocols('.\\protocols\\UDP_protocols.txt', udpProt) # UDP PROTOCOLS
+    fillProtocols('.\\protocols\\WN_protocols.txt', wnProt) # TCP PROTOCOLS
 
     # USER INTERFACE
     try:
-
         # FILE LOAD
         while(not FILE):
             FILE = input('The name of file you wish to open (include .pcap filename extension): ')
-
             if not FILE in testFiles:
                 print('File does not exist')
                 FILE = None
-
         print('=' * 100)
 
         frames = rdpcap(f'.\\test-files\\{FILE}')
@@ -282,18 +283,20 @@ def main():
             print()
 
             if operation == '1':
-                clearFile(f'.\\{PRINT_FILE}')
-                printFile = open(f'.\\{PRINT_FILE}', 'a')
+                printFile = open(f'.\\{PRINT_FILE}', 'w')
+                sys.stdout = printFile
 
                 for x in framesArr:
-                    comprehensivePrint(x, printFile)
+                    comprehensivePrint(x)
+                printIPList()
 
-                printIPList(printFile)
                 printFile.close()
+                sys.stdout = DEFAULT_STDOUT
 
-                print('Opening output file...\n')
-                time.sleep(3)
-                os.startfile(f'.\\{PRINT_FILE}') # opens file with printed frames
+                # Open print FILE
+                print('Opening file...')
+                os.startfile(f'.\\{PRINT_FILE}')  # opens file with printed frames
+                time.sleep(2)
 
             elif operation == 'q':
                 break
