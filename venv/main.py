@@ -48,9 +48,22 @@ class TCPComm():
         self.relatedFrame = frame
         self.comm = [] # related communication packets
 
-    def append_packet(self, packet):
+    def append_comm(self, packet):
         self.comm.append(packet)
 
+
+class ARPComm():
+    def __init__(self, op, sendIP, sendMAC, tarIP, tarMAC, frame):
+        self.op = op
+        self.sendIP = sendIP
+        self.sendMAC = sendMAC
+        self.tarIP = tarIP
+        self.tarMAC = tarMAC
+        self.relatedFrame = frame
+        self.comm = []
+
+    def append_comm(self, packet):
+        self.comm.append(packet)
 
 def save_frames(frames):
     global framesArr
@@ -209,8 +222,8 @@ def nestedProtocols(frame: pcapFrame):
                     print(f'Target MAC: {targetMAC}', end = '\t')
                     print(f'Target IP: {targetIP}')
 
-                    arp_packets.append(frame)
-
+                    arpPacket = ARPComm(operation, senderIP, senderMAC, targetIP, targetMAC, frame)
+                    arp_packets.append(arpPacket)
             else:
                 print('Unknown protocol')
 
@@ -240,7 +253,7 @@ def nestedProtocols(frame: pcapFrame):
 def initTCP(communication):
     temp_comm = communication
 
-    # group related packets
+    # --------------------------- GROUP RELATED PACKETS ---------------------------
     for packet in range(len(temp_comm)):
         actPacket: TCPComm = temp_comm[packet]
 
@@ -250,7 +263,7 @@ def initTCP(communication):
                     continue
                 elif (actPacket.srcIP == temp_comm[i].srcIP and actPacket.destIP == temp_comm[i].destIP and actPacket.srcPort == temp_comm[i].srcPort and actPacket.destPort == temp_comm[i].destPort)\
                     or (actPacket.srcIP == temp_comm[i].destIP and actPacket.destIP == temp_comm[i].srcIP and actPacket.srcPort == temp_comm[i].destPort and actPacket.destPort == temp_comm[i].srcPort):
-                    actPacket.append_packet(temp_comm[i])
+                    actPacket.append_comm(temp_comm[i])
                     temp_comm[i] = None
         else:
             continue
@@ -258,7 +271,7 @@ def initTCP(communication):
         tcp_packet_list.append(actPacket)
         temp_comm[packet] = None # empty the list
 
-    # ANALYSIS
+    # --------------------------- ANALYSIS ---------------------------
     if len(tcp_packet_list) > 0:
         for commun in tcp_packet_list:
             if len(commun.comm) >= 3:
@@ -270,7 +283,7 @@ def initTCP(communication):
                else:
                    commun = None
 
-    # OUTPUT
+    # --------------------------- OUTPUT ---------------------------
     printComplete = 0
     printIncomplete = 0
 
@@ -283,7 +296,6 @@ def initTCP(communication):
             printComplete = 1
 
             print('\n================= KOMPLETNA TCP KOMUNIKACIA =================')
-
             print(f'Frame number: {commun.relatedFrame.num}')
 
             # PACKET LENGTH
@@ -371,7 +383,6 @@ def initTCP(communication):
             printIncomplete = 1
 
             print('\n================= NEUPLNA TCP KOMUNIKACIA =================')
-
             print(f'Frame number: {commun.relatedFrame.num}')
 
             # PACKET LENGTH
@@ -450,6 +461,16 @@ def initTCP(communication):
                 # FRAME TYPE & BYTE STREAM
                 printBytes(commun.relatedFrame)
             temparr = None
+
+    if printComplete == 0:
+        print('Could not find any complete TCP communication')
+
+    if printIncomplete == 0:
+        print('Could not find any incomplete TCP communication')
+
+
+def initARP(communication):
+    pass
 
 
 def printIPList():
