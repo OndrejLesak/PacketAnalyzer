@@ -187,7 +187,7 @@ def nestedProtocols(frame: pcapFrame):
                             print(f'Source port: {sourcePort}')
                             print(f'Destination port: {destPort}')
 
-                            wnProtocol = wnProt[destPort] if wnProt.get(destPort) is not None else 'Unknown protocol'
+                            wnProtocol = wnProt[destPort] if wnProt.get(destPort) is not None else 'Unknown protocol' # edit so it can analyse nested communications
                             print(wnProtocol) # nested protocol
 
                             if wnProtocol == 'TFTP':
@@ -258,67 +258,198 @@ def initTCP(communication):
         tcp_packet_list.append(actPacket)
         temp_comm[packet] = None # empty the list
 
-        # ANALYSIS
-        if len(tcp_packet_list) > 0:
-            for commun in tcp_packet_list:
-                if len(commun.comm) >= 3:
-                   if (commun.flags == 2 and commun.comm[0].flags == 18 and commun.comm[1].flags == 16):
-                       end1, end2, end3, end4 = commun.comm[-1].flags, commun.comm[-2].flags, commun.comm[-3].flags, commun.comm[-4].flags
-
-                       if (end1 == 4 or end1 == 20 or (end1 == 16 and end2 == 17 and end3 == 17) or (end4 == 17 and end3 == 16 and end2 == 17 and end1 == 16)):
-                           commun.isComplete = True
-                   else:
-                       commun = None
-
-        # OUTPUT
-        printComplete = 0
-        printIncomplete = 0
+    # ANALYSIS
+    if len(tcp_packet_list) > 0:
         for commun in tcp_packet_list:
-            if commun is None:
-                continue
+            if len(commun.comm) >= 3:
+               if (commun.flags == 2 and commun.comm[0].flags == 18 and commun.comm[1].flags == 16):
+                   end1, end2, end3, end4 = commun.comm[-1].flags, commun.comm[-2].flags, commun.comm[-3].flags, commun.comm[-4].flags
 
-            if commun.isComplete == 1 and printComplete == 0:
-                printComplete = 1
+                   if (end1 == 4 or end1 == 20 or (end1 == 16 and end2 == 17 and end3 == 17) or (end4 == 17 and end3 == 16 and end2 == 17 and end1 == 16)):
+                       commun.isComplete = True
+               else:
+                   commun = None
 
-                print('================= KOMPLETNA TCP KOMUNIKACIA =================')
+    # OUTPUT
+    printComplete = 0
+    printIncomplete = 0
 
-                print(f'Frame number: {commun.relatedFrame.num}')
+    # COMPLETE COMMUNICATION
+    for commun in tcp_packet_list:
+        if commun is None:
+            continue
+
+        if commun.isComplete == 1 and printComplete == 0:
+            printComplete = 1
+
+            print('\n================= KOMPLETNA TCP KOMUNIKACIA =================')
+
+            print(f'Frame number: {commun.relatedFrame.num}')
+
+            # PACKET LENGTH
+            print(f'Frame pcapAPI length: {commun.relatedFrame.frameLength}B')
+            print(f'Length of the frame transferred via media: {64 if commun.relatedFrame.frameLength < 60 else commun.relatedFrame.frameLength + 4}B')
+
+            # FRAME TYPE & (SRC && DEST MAC ADDRESSES)
+            print(commun.relatedFrame.frameType)
+            print(f'Source MAC address: {composeMAC(commun.relatedFrame.buffer[6:12])}')
+            print(f'Destination MAC address: {composeMAC(commun.relatedFrame.buffer[:6])}')
+
+
+            protocol_dec = int(str(hexlify(commun.relatedFrame.buffer[12:14]))[2:-1], 16)
+            print(ethernetProt[protocol_dec] if ethernetProt.get(protocol_dec) is not None else 'Unknown protocol')
+
+            if protocol_dec == 2048:
+                ipProtocol = ipProt.get(int(str(hexlify(commun.relatedFrame.buffer[23:24]))[2:-1], 16))
+                print(f'Source IP: {commun.srcIP}')
+                print(f'Destination IP: {commun.destIP}')
+
+                if ipProtocol is not None:
+                    print(ipProtocol)
+
+                    if ipProtocol == 'TCP':
+                        if commun.srcPort < commun.destPort:
+                            print(wnProt[commun.srcPort] if wnProt.get(commun.srcPort) is not None else '')
+                        else:
+                            print(wnProt[commun.destPort] if wnProt.get(commun.destPort) is not None else '')
+
+                        print(f'Source port: {commun.srcPort}')
+                        print(f'Destiantion port: {commun.destPort}')
+
+            # FRAME TYPE & BYTE STREAM
+            printBytes(commun.relatedFrame)
+
+            # set the number of packets to be printed
+            if len(commun.comm) > 19:
+                temparr = commun.comm[:9] + commun.comm[-10:]
+            else:
+                temparr = commun.comm
+
+            for member in temparr:
+                print(f'Frame number: {member.relatedFrame.num}')
 
                 # PACKET LENGTH
-                print(f'Frame pcapAPI length: {commun.relatedFrame.frameLength}B')
-                print(f'Length of the frame transferred via media: {64 if commun.relatedFrame.frameLength < 60 else commun.relatedFrame.frameLength + 4}B')
+                print(f'Frame pcapAPI length: {member.relatedFrame.frameLength}B')
+                print(f'Length of the frame transferred via media: {64 if member.relatedFrame.frameLength < 60 else member.relatedFrame.frameLength + 4}B')
 
                 # FRAME TYPE & (SRC && DEST MAC ADDRESSES)
-                print(commun.relatedFrame.frameType)
-                print(f'Source MAC address: {composeMAC(commun.relatedFrame.buffer[6:12])}')
-                print(f'Destination MAC address: {composeMAC(commun.relatedFrame.buffer[:6])}')
+                print(member.relatedFrame.frameType)
+                print(f'Source MAC address: {composeMAC(member.relatedFrame.buffer[6:12])}')
+                print(f'Destination MAC address: {composeMAC(member.relatedFrame.buffer[:6])}')
 
-
-                protocol_dec = int(str(hexlify(commun.relatedFrame.buffer[12:14]))[2:-1], 16)
-                print(ethernetProt[protocol_dec] if ethernetProt.get(protocol_dec) is not None else 'Unknown protocol')
+                protocol_dec = int(str(hexlify(member.relatedFrame.buffer[12:14]))[2:-1], 16)
+                print(ethernetProt[protocol_dec] if ethernetProt.get(
+                    protocol_dec) is not None else 'Unknown protocol')
 
                 if protocol_dec == 2048:
-                    ipProtocol = ipProt.get(int(str(hexlify(commun.relatedFrame.buffer[23:24]))[2:-1], 16))
-                    print(f'Source IP: {commun.srcIP}')
-                    print(f'Destination IP: {commun.destIP}')
+                    ipProtocol = ipProt.get(int(str(hexlify(member.relatedFrame.buffer[23:24]))[2:-1], 16))
+                    print(f'Source IP: {member.srcIP}')
+                    print(f'Destination IP: {member.destIP}')
 
                     if ipProtocol is not None:
                         print(ipProtocol)
 
                         if ipProtocol == 'TCP':
-                            if commun.srcPort < commun.destPort:
-                                print(wnProt[commun.srcPort] if wnProt.get(commun.srcPort) is not None else '')
+                            if member.srcPort < member.destPort:
+                                print(wnProt[member.srcPort] if wnProt.get(member.srcPort) is not None else '')
                             else:
-                                print(wnProt[commun.destPort] if wnProt.get(commun.destPort) is not None else '')
-                            print(f'Source port: {commun.srcPort}')
-                            print(f'Destiantion port: {commun.destPort}')
+                                print(wnProt[member.destPort] if wnProt.get(member.destPort) is not None else '')
+
+                            print(f'Source port: {member.srcPort}')
+                            print(f'Destiantion port: {member.destPort}')
 
                 # FRAME TYPE & BYTE STREAM
                 printBytes(commun.relatedFrame)
+            temparr = None
 
-                if len(commun.comm) > 19:
-                    break
+    # INCOMPLETE COMMUNICATION
+    for commun in tcp_packet_list:
+        if commun is None:
+            continue
 
+        if commun.isComplete == False and printIncomplete == 0:
+            printIncomplete = 1
+
+            print('\n================= NEUPLNA TCP KOMUNIKACIA =================')
+
+            print(f'Frame number: {commun.relatedFrame.num}')
+
+            # PACKET LENGTH
+            print(f'Frame pcapAPI length: {commun.relatedFrame.frameLength}B')
+            print(
+                f'Length of the frame transferred via media: {64 if commun.relatedFrame.frameLength < 60 else commun.relatedFrame.frameLength + 4}B')
+
+            # FRAME TYPE & (SRC && DEST MAC ADDRESSES)
+            print(commun.relatedFrame.frameType)
+            print(f'Source MAC address: {composeMAC(commun.relatedFrame.buffer[6:12])}')
+            print(f'Destination MAC address: {composeMAC(commun.relatedFrame.buffer[:6])}')
+
+            protocol_dec = int(str(hexlify(commun.relatedFrame.buffer[12:14]))[2:-1], 16)
+            print(ethernetProt[protocol_dec] if ethernetProt.get(protocol_dec) is not None else 'Unknown protocol')
+
+            if protocol_dec == 2048:
+                ipProtocol = ipProt.get(int(str(hexlify(commun.relatedFrame.buffer[23:24]))[2:-1], 16))
+                print(f'Source IP: {commun.srcIP}')
+                print(f'Destination IP: {commun.destIP}')
+
+                if ipProtocol is not None:
+                    print(ipProtocol)
+
+                    if ipProtocol == 'TCP':
+                        if commun.srcPort < commun.destPort:
+                            print(wnProt[commun.srcPort] if wnProt.get(commun.srcPort) is not None else '')
+                        else:
+                            print(wnProt[commun.destPort] if wnProt.get(commun.destPort) is not None else '')
+
+                        print(f'Source port: {commun.srcPort}')
+                        print(f'Destiantion port: {commun.destPort}')
+
+            # FRAME TYPE & BYTE STREAM
+            printBytes(commun.relatedFrame)
+
+            # set the number of packets to be printed
+            if len(commun.comm) > 19:
+                temparr = commun.comm[:9] + commun.comm[-10:]
+            else:
+                temparr = commun.comm
+
+            for member in temparr:
+                print(f'Frame number: {member.relatedFrame.num}')
+
+                # PACKET LENGTH
+                print(f'Frame pcapAPI length: {member.relatedFrame.frameLength}B')
+                print(
+                    f'Length of the frame transferred via media: {64 if member.relatedFrame.frameLength < 60 else member.relatedFrame.frameLength + 4}B')
+
+                # FRAME TYPE & (SRC && DEST MAC ADDRESSES)
+                print(member.relatedFrame.frameType)
+                print(f'Source MAC address: {composeMAC(member.relatedFrame.buffer[6:12])}')
+                print(f'Destination MAC address: {composeMAC(member.relatedFrame.buffer[:6])}')
+
+                protocol_dec = int(str(hexlify(member.relatedFrame.buffer[12:14]))[2:-1], 16)
+                print(ethernetProt[protocol_dec] if ethernetProt.get(
+                    protocol_dec) is not None else 'Unknown protocol')
+
+                if protocol_dec == 2048:
+                    ipProtocol = ipProt.get(int(str(hexlify(member.relatedFrame.buffer[23:24]))[2:-1], 16))
+                    print(f'Source IP: {member.srcIP}')
+                    print(f'Destination IP: {member.destIP}')
+
+                    if ipProtocol is not None:
+                        print(ipProtocol)
+
+                        if ipProtocol == 'TCP':
+                            if member.srcPort < member.destPort:
+                                print(wnProt[member.srcPort] if wnProt.get(member.srcPort) is not None else '')
+                            else:
+                                print(wnProt[member.destPort] if wnProt.get(member.destPort) is not None else '')
+
+                            print(f'Source port: {member.srcPort}')
+                            print(f'Destiantion port: {member.destPort}')
+
+                # FRAME TYPE & BYTE STREAM
+                printBytes(commun.relatedFrame)
+            temparr = None
 
 
 def printIPList():
@@ -421,14 +552,15 @@ def main():
                     comprehensivePrint(x)
                 printIPList()
 
+                initTCP(http_packets)
+
+                printFile.close()
+                sys.stdout = DEFAULT_STDOUT
+
                 # Open print FILE
                 print('Opening file...')
                 os.startfile(f'.\\{PRINT_FILE}')  # opens file with printed frames
                 time.sleep(2)
-
-                initTCP(http_packets)
-                printFile.close()
-                sys.stdout = DEFAULT_STDOUT
 
             elif operation == 'q':
                 break
