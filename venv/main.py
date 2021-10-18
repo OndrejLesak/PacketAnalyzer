@@ -165,7 +165,7 @@ def nestedProtocols(frame: pcapFrame):
                             print(wnProtocol)
 
                             tcpFrame = TCPComm(sourceIP, destIP, sourcePort, destPort,\
-                                               frame, str(hexlify(rawPacket[offsetIhl+13:offsetIhl+14]))[2:-1]) # partial initialization of TCP communication
+                                               frame, int(str(hexlify(rawPacket[offsetIhl+13:offsetIhl+14]))[2:-1], 16)) # partial initialization of TCP communication
 
                             if wnProtocol == 'HTTP':
                                 http_packets.append(tcpFrame)
@@ -258,13 +258,67 @@ def initTCP(communication):
         tcp_packet_list.append(actPacket)
         temp_comm[packet] = None # empty the list
 
-
         # ANALYSIS
         if len(tcp_packet_list) > 0:
             for commun in tcp_packet_list:
-                if len(commun.comm) > 0:
-                    for member in commun.comm:
-                      continue
+                if len(commun.comm) >= 3:
+                   if (commun.flags == 2 and commun.comm[0].flags == 18 and commun.comm[1].flags == 16):
+                       end1, end2, end3, end4 = commun.comm[-1].flags, commun.comm[-2].flags, commun.comm[-3].flags, commun.comm[-4].flags
+
+                       if (end1 == 4 or end1 == 20 or (end1 == 16 and end2 == 17 and end3 == 17) or (end4 == 17 and end3 == 16 and end2 == 17 and end1 == 16)):
+                           commun.isComplete = True
+                   else:
+                       commun = None
+
+        # OUTPUT
+        printComplete = 0
+        printIncomplete = 0
+        for commun in tcp_packet_list:
+            if commun is None:
+                continue
+
+            if commun.isComplete == 1 and printComplete == 0:
+                printComplete = 1
+
+                print('================= KOMPLETNA TCP KOMUNIKACIA =================')
+
+                print(f'Frame number: {commun.relatedFrame.num}')
+
+                # PACKET LENGTH
+                print(f'Frame pcapAPI length: {commun.relatedFrame.frameLength}B')
+                print(f'Length of the frame transferred via media: {64 if commun.relatedFrame.frameLength < 60 else commun.relatedFrame.frameLength + 4}B')
+
+                # FRAME TYPE & (SRC && DEST MAC ADDRESSES)
+                print(commun.relatedFrame.frameType)
+                print(f'Source MAC address: {composeMAC(commun.relatedFrame.buffer[6:12])}')
+                print(f'Destination MAC address: {composeMAC(commun.relatedFrame.buffer[:6])}')
+
+
+                protocol_dec = int(str(hexlify(commun.relatedFrame.buffer[12:14]))[2:-1], 16)
+                print(ethernetProt[protocol_dec] if ethernetProt.get(protocol_dec) is not None else 'Unknown protocol')
+
+                if protocol_dec == 2048:
+                    ipProtocol = ipProt.get(int(str(hexlify(commun.relatedFrame.buffer[23:24]))[2:-1], 16))
+                    print(f'Source IP: {commun.srcIP}')
+                    print(f'Destination IP: {commun.destIP}')
+
+                    if ipProtocol is not None:
+                        print(ipProtocol)
+
+                        if ipProtocol == 'TCP':
+                            if commun.srcPort < commun.destPort:
+                                print(wnProt[commun.srcPort] if wnProt.get(commun.srcPort) is not None else '')
+                            else:
+                                print(wnProt[commun.destPort] if wnProt.get(commun.destPort) is not None else '')
+                            print(f'Source port: {commun.srcPort}')
+                            print(f'Destiantion port: {commun.destPort}')
+
+                # FRAME TYPE & BYTE STREAM
+                printBytes(commun.relatedFrame)
+
+                if len(commun.comm) > 19:
+                    break
+
 
 
 def printIPList():
@@ -367,15 +421,14 @@ def main():
                     comprehensivePrint(x)
                 printIPList()
 
-                printFile.close()
-                sys.stdout = DEFAULT_STDOUT
-
                 # Open print FILE
                 print('Opening file...')
                 os.startfile(f'.\\{PRINT_FILE}')  # opens file with printed frames
                 time.sleep(2)
 
                 initTCP(http_packets)
+                printFile.close()
+                sys.stdout = DEFAULT_STDOUT
 
             elif operation == 'q':
                 break
