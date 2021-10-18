@@ -13,6 +13,7 @@ ethernetProt = {} # ETHERNET II Protocols
 ieeeProt = {} # IEEE 802.3 Protocols
 ipProt = {} # IPv4 Protocols
 wnProt = {} # WELL-KNOWN protocols
+icmpTypes = {} # ICMP Types
 
 ipList = {} # list of all unique IP addresses
 
@@ -26,6 +27,7 @@ tcp_packet_list = []
 
 tftp_packets = []
 icmp_packets = []
+icmp_packet_list = []
 arp_packets = []
 arp_packet_list = []
 
@@ -66,6 +68,24 @@ class ARPComm():
     def append_comm(self, packet):
         self.comm.append(packet)
 
+
+class ICMPComm():
+    def __init__(self, srcIP, destIP, type, frame):
+        self.srcIP = srcIP
+        self.destIP = destIP
+        self.icmpMess = self.getICMP(type)
+        self.relatedFrame = frame
+        self.comm = []
+
+    def append_packet(self, packet):
+        self.comm.append(packet)
+
+    def getICMP(self, type):
+        if icmpTypes is not None and icmpTypes.get(type) is not None:
+            return icmpTypes[type]
+        return None
+
+
 def save_frames(frames):
     global framesArr
 
@@ -95,7 +115,7 @@ def printBytes(frame: pcapFrame, useSep = True):
             print('=' * 100)
             print('=' * 100)
         else:
-            print('\n\n')
+            print('\n')
 
     except FileNotFoundError:
         print('File was not found')
@@ -207,8 +227,14 @@ def nestedProtocols(frame: pcapFrame):
                             wnProtocol = wnProt[destPort] if wnProt.get(destPort) is not None else 'Unknown protocol' # edit so it can analyse nested communications
                             print(wnProtocol) # nested protocol
 
-                            if wnProtocol == 'TFTP':
+                            if wnProtocol == 'TFTP': # edit!
                                 tftp_packets.append(frame)
+
+                        elif ipProtocol == 'ICMP':
+                            icmpType = int(str(hexlify(rawPacket[offsetIhl:offsetIhl+1]))[2:-1], 16)
+
+                            icmpPacket = ICMPComm(sourceIP, destIP, icmpType, frame)
+                            icmp_packets.append(icmpPacket)
 
                     else:
                         print("Unknown protocol")
@@ -502,7 +528,7 @@ def initARP(communication):
     for commu in arp_packet_list:
         frame = commu.relatedFrame
 
-        print(f'================= COMMUNICATION {cnt} =================')
+        print(f'\n================= COMMUNICATION {cnt} =================')
         if commu.op == 1 and commu.pair is not None:
             print(f'IP address: {commu.tarIP}\t MAC address: {commu.tarMAC}')
             print()
@@ -523,6 +549,8 @@ def initARP(communication):
         if protocol_dec == 2054:
             if(commu.op == 1):
                 print(' - Request')
+            else:
+                print(' - Reply')
         else:
             print()
 
@@ -533,7 +561,7 @@ def initARP(communication):
 
         printBytes(frame, useSep = False)
 
-        if commu.pair is not None:
+        if commu.pair is not None: # pair print
             pair = commu.pair
             pairFrame = pair.relatedFrame
             print(f'IP address: {commu.tarIP}\t MAC address: {pair.sendMAC}')
@@ -569,7 +597,100 @@ def initARP(communication):
 
 
 def initICMP(communication):
-    pass
+    temp_array = communication
+
+    # --------------------------- GROUP RELATED PACKETS ---------------------------
+    for packet in range(len(temp_array)):
+        actPacket: ICMPComm = temp_array[packet]
+
+        if actPacket is None:
+            continue
+        else:
+            for i in range(packet+1, len(temp_array)):
+                if temp_array[i] is None:
+                    continue
+                else:
+                    if (actPacket.srcIP == temp_array[i].srcIP and actPacket.destIP == temp_array[i].destIP) or (actPacket.srcIP == temp_array[i].destIP and actPacket.destIP == temp_array[i].srcIP):
+                        actPacket.append_packet(temp_array[i])
+                        temp_array[i] = None
+
+        icmp_packet_list.append(actPacket)
+        temp_array[packet] = None
+
+    # --------------------------- OUTPUT ---------------------------
+    cnt = 1
+    for commu in icmp_packet_list:
+        actFrame = commu.relatedFrame
+        rawFrame = actFrame.buffer
+
+        print(f'\n================= COMMUNICATION {cnt} =================')
+
+        print('Frame number:', actFrame.num)  # row number of a frame
+
+        # PACKET LENGTH
+        print(f'Frame pcapAPI length: {actFrame.frameLength}B')
+        print(f'Length of the frame transferred via media: {64 if actFrame.frameLength < 60 else actFrame.frameLength + 4}B')
+
+        # FRAME TYPE & (SRC && DEST MAC ADDRESSES)
+        print(actFrame.frameType)
+        print(f'Source MAC address: {composeMAC(rawFrame[6:12])}')
+        print(f'Destination MAC address: {composeMAC(rawFrame[:6])}')
+
+        if actFrame.frameType == 'Ethernet II':
+            protocol_dec = int(str(hexlify(actFrame.buffer[12:14]))[2:-1], 16)
+            print(ethernetProt[protocol_dec] if ethernetProt.get(protocol_dec) is not None else 'Unknown protocol')
+
+            if protocol_dec == 2048:
+                ipProtocol = ipProt.get(int(str(hexlify(rawFrame[23:24]))[2:-1], 16))
+
+                print(f'Source IP: {commu.srcIP}')
+                print(f'Destination IP: {commu.destIP}')
+
+                if ipProtocol is not None:
+                    print(ipProtocol)
+
+                    if ipProtocol == 'ICMP':
+                        print(f'Message: {commu.icmpMess}')
+
+        # FRAME TYPE & BYTE STREAM
+        printBytes(actFrame, useSep = False)
+
+        for member in commu.comm:
+            memberFrame = member.relatedFrame
+            rawMemberPacket = memberFrame.buffer
+
+            print('Frame number:', memberFrame.num)  # row number of a frame
+
+            # PACKET LENGTH
+            print(f'Frame pcapAPI length: {memberFrame.frameLength}B')
+            print(
+                f'Length of the frame transferred via media: {64 if memberFrame.frameLength < 60 else memberFrame.frameLength + 4}B')
+
+            # FRAME TYPE & (SRC && DEST MAC ADDRESSES)
+            print(memberFrame.frameType)
+            print(f'Source MAC address: {composeMAC(rawMemberPacket[6:12])}')
+            print(f'Destination MAC address: {composeMAC(rawMemberPacket[:6])}')
+
+            if memberFrame.frameType == 'Ethernet II':
+                protocol_dec = int(str(hexlify(memberFrame.buffer[12:14]))[2:-1], 16)
+                print(ethernetProt[protocol_dec] if ethernetProt.get(protocol_dec) is not None else 'Unknown protocol')
+
+                if protocol_dec == 2048:
+                    ipProtocol = ipProt.get(int(str(hexlify(memberFrame.buffer[23:24]))[2:-1], 16))
+
+                    print(f'Source IP: {member.srcIP}')
+                    print(f'Destination IP: {member.destIP}')
+
+                    if ipProtocol is not None:
+                        print(ipProtocol)
+
+                        if ipProtocol == 'ICMP':
+                            print(f'Message: {member.icmpMess}')
+
+            # FRAME TYPE & BYTE STREAM
+            printBytes(memberFrame, useSep = False)
+
+        cnt += 1
 
 
 def printIPList():
@@ -644,6 +765,7 @@ def main():
     fillProtocols('.\\protocols\\IEEE_protocols.txt', ieeeProt) # IEEE PROTOCOLS
     fillProtocols('.\\protocols\\IP_protocols.txt', ipProt) # IP PROTOCOLS
     fillProtocols('.\\protocols\\WN_protocols.txt', wnProt) # TCP PROTOCOLS
+    fillProtocols('.\\protocols\\ICMP_types.txt', icmpTypes) # ICMP TYPES
 
     # USER INTERFACE
     try:
@@ -673,7 +795,8 @@ def main():
                 printIPList()
 
                 # initTCP(http_packets)
-                initARP(arp_packets)
+                # initARP(arp_packets)
+                initICMP(icmp_packets)
 
                 printFile.close()
                 sys.stdout = DEFAULT_STDOUT
