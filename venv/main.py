@@ -27,7 +27,7 @@ tcp_packet_list = []
 tftp_packets = []
 icmp_packets = []
 arp_packets = []
-
+arp_packet_list = []
 
 class pcapFrame():
     def __init__(self, num, buffer):
@@ -60,6 +60,7 @@ class ARPComm():
         self.tarIP = tarIP
         self.tarMAC = tarMAC
         self.relatedFrame = frame
+        self.pair = None
         self.comm = []
 
     def append_comm(self, packet):
@@ -75,7 +76,7 @@ def save_frames(frames):
         i += 1
 
 
-def printBytes(frame: pcapFrame):
+def printBytes(frame: pcapFrame, useSep = True):
     try:
         rawFrame = frame.buffer
         i = 0
@@ -90,8 +91,11 @@ def printBytes(frame: pcapFrame):
             print(" ", end="")
 
         print()
-        print('=' * 100)
-        print('=' * 100)
+        if useSep:
+            print('=' * 100)
+            print('=' * 100)
+        else:
+            print('\n\n')
 
     except FileNotFoundError:
         print('File was not found')
@@ -387,8 +391,7 @@ def initTCP(communication):
 
             # PACKET LENGTH
             print(f'Frame pcapAPI length: {commun.relatedFrame.frameLength}B')
-            print(
-                f'Length of the frame transferred via media: {64 if commun.relatedFrame.frameLength < 60 else commun.relatedFrame.frameLength + 4}B')
+            print(f'Length of the frame transferred via media: {64 if commun.relatedFrame.frameLength < 60 else commun.relatedFrame.frameLength + 4}B')
 
             # FRAME TYPE & (SRC && DEST MAC ADDRESSES)
             print(commun.relatedFrame.frameType)
@@ -470,6 +473,102 @@ def initTCP(communication):
 
 
 def initARP(communication):
+    temp_array = communication
+
+    # --------------------------- GROUP RELATED PACKETS ---------------------------
+    for packet in range(len(temp_array)):
+        actPacket: ARPComm = temp_array[packet]
+
+        if actPacket is None:
+            continue
+
+        for i in range(packet+1, len(temp_array)):
+            if temp_array[i] is None:
+                continue
+            else:
+                # if (actPacket.sendIP == temp_array[i].sendIP and actPacket.tarIP == temp_array[i].tarIP and actPacket.sendMAC == temp_array[i].sendMAC and actPacket.tarMAC == temp_array[i].tarMAC and actPacket.op == temp_array[i].op):
+                #     actPacket.append_comm(temp_array[i])
+                #     temp_array[i] = None
+                if actPacket.sendIP == temp_array[i].tarIP and actPacket.tarIP == temp_array[i].sendIP and (actPacket.sendMAC == temp_array[i].tarMAC or actPacket.tarMAC == temp_array[i].sendMAC) and temp_array[i].op != actPacket.op:
+                    actPacket.pair = temp_array[i]
+                    temp_array[i] = None
+                    break
+
+        arp_packet_list.append(actPacket)
+        temp_array[packet] = None
+
+    # --------------------------- OUTPUT ---------------------------
+    cnt = 1
+    for commu in arp_packet_list:
+        frame = commu.relatedFrame
+
+        print(f'================= COMMUNICATION {cnt} =================')
+        if commu.op == 1 and commu.pair is not None:
+            print(f'IP address: {commu.tarIP}\t MAC address: {commu.tarMAC}')
+            print()
+
+
+        print(f'Frame number: {frame.num}')
+
+        # PACKET LENGTH
+        print(f'Frame pcapAPI length: {frame.frameLength}B')
+        print(f'Length of the frame transferred via media: {64 if frame.frameLength < 60 else frame.frameLength + 4}B')
+
+        # FRAME TYPE & (SRC && DEST MAC ADDRESSES)
+        print(frame.frameType)
+
+        protocol_dec = int(str(hexlify(frame.buffer[12:14]))[2:-1], 16)
+        print(ethernetProt[protocol_dec] if ethernetProt.get(protocol_dec) is not None else 'Unknown protocol', end='')
+
+        if protocol_dec == 2054:
+            if(commu.op == 1):
+                print(' - Request')
+        else:
+            print()
+
+        print(f'Source IP: {commu.sendIP}')
+        print(f'Destination IP: {commu.tarIP}')
+        print(f'Source MAC address: {commu.sendMAC}')
+        print(f'Destination MAC address: {commu.tarMAC}')
+
+        printBytes(frame, useSep = False)
+
+        if commu.pair is not None:
+            pair = commu.pair
+            pairFrame = pair.relatedFrame
+            print(f'IP address: {commu.tarIP}\t MAC address: {pair.sendMAC}')
+            print()
+
+            print(f'Frame number: {pairFrame.num}')
+
+            # PACKET LENGTH
+            print(f'Frame pcapAPI length: {pairFrame.frameLength}B')
+            print(f'Length of the frame transferred via media: {64 if pairFrame.frameLength < 60 else pairFrame.frameLength + 4}B')
+
+            # FRAME TYPE & (SRC && DEST MAC ADDRESSES)
+            print(pairFrame.frameType)
+
+            pair_protocol_dec = int(str(hexlify(pairFrame.buffer[12:14]))[2:-1], 16)
+            print(ethernetProt[pair_protocol_dec] if ethernetProt.get(pair_protocol_dec) is not None else 'Unknown protocol',
+                  end='')
+
+            if protocol_dec == 2054:
+                if (pair.op == 2):
+                    print(' - Reply')
+            else:
+                print()
+
+            print(f'Source IP: {pair.sendIP}')
+            print(f'Destination IP: {pair.tarIP}')
+            print(f'Source MAC address: {pair.sendMAC}')
+            print(f'Destination MAC address: {pair.tarMAC}')
+
+            printBytes(pairFrame)
+
+        cnt += 1
+
+
+def initICMP(communication):
     pass
 
 
@@ -573,7 +672,8 @@ def main():
                     comprehensivePrint(x)
                 printIPList()
 
-                initTCP(http_packets)
+                # initTCP(http_packets)
+                initARP(arp_packets)
 
                 printFile.close()
                 sys.stdout = DEFAULT_STDOUT

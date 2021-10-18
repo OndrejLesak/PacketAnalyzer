@@ -1,0 +1,38 @@
+;0;Echo Reply
+;3;Destination Unreachable
+;3.1;Net Unreachable
+;3.2;Host Unreachable
+;3.3;Port Unreachable
+;3.4;Fragmentation Needed & DF Set
+;3.5;Source Route Failed
+;3.6;Destination Network Unknown
+;3.7;Destination Host Isolated
+;3.8;Source Host Isolated
+;3.9;Network Administratively Prohibited
+;3.10;Hist administratively Prohibited
+;3.11;Network Unreachable for TOS
+;3.12;Host Unreachable for TOS
+;3.13;Communication Administratively Prohibited
+;4;Source Quench
+;5;Redirect
+;5.0;Redirect Datagram for the Network
+;5.1;Redirect Datagram for the Host
+;5.2;Redirect Datagram for the TOS & Network
+;5.3;Redirect Datagram for the TOS & Host
+;8;Echo
+;9;Router Advertisement
+;10;Router Selection
+;11;Time Exceeded
+;11.0;Time to Live exceeded in Transit
+;11.1;Fragment Reassembly Time Exceeded
+;12;Parameter Problem
+;12.0;Pointer indicates the error
+;12.1;Missing a Required Option
+;12.2;Bad Length
+;13;Timestamp
+;14;Timestamp Reply
+;15;Information Request
+;16;Information Reply
+;17;Address Mask Request
+;18;Address Mask Reply
+;30;Traceroute
