@@ -78,13 +78,26 @@ class ICMPComm():
         self.relatedFrame = frame
         self.comm = []
 
-    def append_packet(self, packet):
+    def append_comm(self, packet):
         self.comm.append(packet)
 
     def getICMP(self, type):
         if icmpTypes is not None and icmpTypes.get(type) is not None:
             return icmpTypes[type]
         return None
+
+
+class TFTPComm():
+    def __init__(self, srcIP, destIP, srcPort, destPort, frame):
+        self.srcIP = srcIP
+        self.destIP = destIP
+        self.srcPort = srcPort
+        self.destPort = destPort
+        self.relatedFrame = frame
+        self.comm = []
+
+    def append_comm(self, packet):
+        self.comm.append(packet)
 
 
 def save_frames(frames):
@@ -237,8 +250,16 @@ def loadPackets(frames):
 
                                 wnProtocol = wnProt[destPort] if wnProt.get(destPort) is not None else 'Unknown protocol'  # edit so it can analyse nested communications
 
-                                if wnProtocol == 'TFTP':  # edit!
-                                    tftp_packets.append(frame)
+                                if wnProtocol == 'TFTP':
+                                    tftpPacket = TFTPComm(sourceIP, destIP, sourcePort, destPort, frame)
+                                    tftp_packet_list.append(tftpPacket)
+                                else:
+                                    if tftp_packet_list is not None:
+                                        for packet in tftp_packet_list:
+                                            if packet.srcIP == sourceIP and packet.destIP == destIP and packet.srcPort == sourcePort\
+                                                or packet.srcIP == destIP and packet.destIP == sourceIP and packet.srcPort == destPort:
+                                                    tftpPacket = TFTPComm(sourceIP, destIP, sourcePort, destPort, frame)
+                                                    packet.append_comm(tftpPacket)
 
                             elif ipProtocol == 'ICMP':
                                 icmpType = int(str(hexlify(rawPacket[offsetIhl:offsetIhl + 1]))[2:-1], 16)
@@ -320,11 +341,20 @@ def nestedProtocols(frame: pcapFrame):
                             print(f'Source port: {sourcePort}')
                             print(f'Destination port: {destPort}')
 
-                            wnProtocol = wnProt[destPort] if wnProt.get(destPort) is not None else 'Unknown protocol' # edit so it can analyse nested communications
-                            print(wnProtocol) # nested protocol
+                            wnProtocol = wnProt[destPort] if wnProt.get(destPort) is not None else '' # edit so it can analyse nested communications
+                            print(wnProtocol)  # nested protocol
 
-                            if wnProtocol == 'TFTP': # edit!
-                                tftp_packets.append(frame)
+                            if wnProtocol == 'TFTP':
+                                tftpPacket = TFTPComm(sourceIP, destIP, sourcePort, destPort, frame)
+                                tftp_packet_list.append(tftpPacket)
+                            else:
+                                if tftp_packet_list is not None:
+                                    for packet in tftp_packet_list:
+                                        if packet.srcIP == sourceIP and packet.destIP == destIP and packet.srcPort == sourcePort \
+                                            or packet.srcIP == destIP and packet.destIP == sourceIP and packet.srcPort == destPort:
+                                                print('TFTP')
+                                                tftpPacket = TFTPComm(sourceIP, destIP, sourcePort, destPort, frame)
+                                                packet.append_comm(tftpPacket)
 
                         elif ipProtocol == 'ICMP':
                             icmpType = int(str(hexlify(rawPacket[offsetIhl:offsetIhl+1]))[2:-1], 16)
@@ -342,7 +372,7 @@ def nestedProtocols(frame: pcapFrame):
                     targetMAC = composeMAC(rawPacket[32:38])
                     targetIP = composeIP(rawPacket[38:42])
 
-                    print('Request' if operation == 1 else 'Response')
+                    print('Request' if operation == 1 else 'Reply')
                     print(f'Sender MAC: {senderMAC}', end = '\t')
                     print(f'Sender IP: {senderIP}')
                     print(f'Target MAC: {targetMAC}', end = '\t')
@@ -400,7 +430,7 @@ def initTCP(communication):
     # --------------------------- ANALYSIS ---------------------------
     if len(tcp_packet_list) > 0:
         for commun in tcp_packet_list:
-            if len(commun.comm) >= 3:
+            if len(commun.comm) >= 4:
                if (commun.flags == 2 and commun.comm[0].flags == 18 and commun.comm[1].flags == 16):
                    end1, end2, end3, end4 = commun.comm[-1].flags, commun.comm[-2].flags, commun.comm[-3].flags, commun.comm[-4].flags
 
@@ -623,7 +653,7 @@ def initARP(communication):
     for commu in arp_packet_list:
         frame = commu.relatedFrame
 
-        print(f'\n================= COMMUNICATION {cnt} =================')
+        print(f'\n================= ARP COMMUNICATION {cnt} =================')
         if commu.op == 1 and commu.pair is not None:
             print(f'IP address: {commu.tarIP}\t MAC address: {commu.tarMAC}')
             print()
@@ -706,7 +736,7 @@ def initICMP(communication):
                     continue
                 else:
                     if (actPacket.srcIP == temp_array[i].srcIP and actPacket.destIP == temp_array[i].destIP) or (actPacket.srcIP == temp_array[i].destIP and actPacket.destIP == temp_array[i].srcIP):
-                        actPacket.append_packet(temp_array[i])
+                        actPacket.append_comm(temp_array[i])
                         temp_array[i] = None
 
         icmp_packet_list.append(actPacket)
@@ -718,7 +748,7 @@ def initICMP(communication):
         actFrame = commu.relatedFrame
         rawFrame = actFrame.buffer
 
-        print(f'\n================= COMMUNICATION {cnt} =================')
+        print(f'\n================= ICMP COMMUNICATION {cnt} =================')
 
         print('Frame number:', actFrame.num)  # row number of a frame
 
@@ -758,8 +788,7 @@ def initICMP(communication):
 
             # PACKET LENGTH
             print(f'Frame pcapAPI length: {memberFrame.frameLength}B')
-            print(
-                f'Length of the frame transferred via media: {64 if memberFrame.frameLength < 60 else memberFrame.frameLength + 4}B')
+            print(f'Length of the frame transferred via media: {64 if memberFrame.frameLength < 60 else memberFrame.frameLength + 4}B')
 
             # FRAME TYPE & (SRC && DEST MAC ADDRESSES)
             print(memberFrame.frameType)
@@ -785,6 +814,92 @@ def initICMP(communication):
             # FRAME TYPE & BYTE STREAM
             printBytes(memberFrame, useSep = False)
 
+        cnt += 1
+
+
+def initTFTP(communication):
+    temp_array = communication
+
+    # --------------------------- OUTPUT ---------------------------
+    cnt = 1
+    for commu in temp_array:
+        actFrame = commu.relatedFrame
+        rawFrame = actFrame.buffer
+
+        print(f'\n================= TFTP COMMUNICATION {cnt} =================')
+        print('Frame number:', actFrame.num)  # row number of a frame
+
+        # PACKET LENGTH
+        print(f'Frame pcapAPI length: {actFrame.frameLength}B')
+        print(f'Length of the frame transferred via media: {64 if actFrame.frameLength < 60 else actFrame.frameLength + 4}B')
+
+        # FRAME TYPE & (SRC && DEST MAC ADDRESSES)
+        print(actFrame.frameType)
+        print(f'Source MAC address: {composeMAC(rawFrame[6:12])}')
+        print(f'Destination MAC address: {composeMAC(rawFrame[:6])}')
+
+        if actFrame.frameType == 'Ethernet II':
+            protocol_dec = int(str(hexlify(actFrame.buffer[12:14]))[2:-1], 16)
+            print(ethernetProt[protocol_dec] if ethernetProt.get(protocol_dec) is not None else 'Unknown protocol')
+
+            if protocol_dec == 2048:
+                ipProtocol = ipProt.get(int(str(hexlify(rawFrame[23:24]))[2:-1], 16))
+
+                print(f'Source IP: {commu.srcIP}')
+                print(f'Destination IP: {commu.destIP}')
+
+                if ipProtocol is not None:
+                    print(ipProtocol)
+
+                    if ipProtocol == 'UDP':
+                        if commu.destPort == 69:
+                            print(f'Source port: {commu.srcPort}')
+                            print(f'Destination port: {commu.destPort}')
+                            print('TFTP')
+
+
+        # FRAME TYPE & BYTE STREAM
+        printBytes(actFrame, useSep=False)
+
+        if commu.comm is not None:
+            for member in commu.comm:
+                actMemFrame = member.relatedFrame
+                rawMemPacket = actMemFrame.buffer
+
+                print('Frame number:', actMemFrame.num)  # row number of a frame
+
+                # PACKET LENGTH
+                print(f'Frame pcapAPI length: {actMemFrame.frameLength}B')
+                print(
+                    f'Length of the frame transferred via media: {64 if actMemFrame.frameLength < 60 else actMemFrame.frameLength + 4}B')
+
+                # FRAME TYPE & (SRC && DEST MAC ADDRESSES)
+                print(actMemFrame.frameType)
+                print(f'Source MAC address: {composeMAC(rawMemPacket[6:12])}')
+                print(f'Destination MAC address: {composeMAC(rawMemPacket[:6])}')
+
+                if actMemFrame.frameType == 'Ethernet II':
+                    protocol_dec = int(str(hexlify(actMemFrame.buffer[12:14]))[2:-1], 16)
+                    print(ethernetProt[protocol_dec] if ethernetProt.get(
+                        protocol_dec) is not None else 'Unknown protocol')
+
+                    if protocol_dec == 2048:
+                        ipProtocol = ipProt.get(int(str(hexlify(rawMemPacket[23:24]))[2:-1], 16))
+
+                        print(f'Source IP: {member.srcIP}')
+                        print(f'Destination IP: {member.destIP}')
+
+                        if ipProtocol is not None:
+                            print(ipProtocol)
+
+                            if ipProtocol == 'UDP':
+                                if commu.destPort == 69:
+                                    print(f'Source port: {member.srcPort}')
+                                    print(f'Destination port: {member.destPort}')
+                                    print('TFTP')
+
+                # FRAME TYPE & BYTE STREAM
+                printBytes(actMemFrame, useSep=False)
         cnt += 1
 
 
@@ -933,7 +1048,7 @@ def main():
                 sys.stdout = printFile
 
                 loadPackets(framesArr)
-                initTCP(http_packets)
+                initTCP(https_packets)
 
                 printFile.close()
             elif operation == '4':
@@ -941,7 +1056,7 @@ def main():
                 sys.stdout = printFile
 
                 loadPackets(framesArr)
-                initTCP(http_packets)
+                initTCP(telnet_packets)
 
                 printFile.close()
             elif operation == '5':
@@ -949,7 +1064,7 @@ def main():
                 sys.stdout = printFile
 
                 loadPackets(framesArr)
-                initTCP(http_packets)
+                initTCP(ssh_packets)
 
                 printFile.close()
             elif operation == '6':
@@ -957,7 +1072,7 @@ def main():
                 sys.stdout = printFile
 
                 loadPackets(framesArr)
-                initTCP(http_packets)
+                initTCP(ftpC_packets)
 
                 printFile.close()
             elif operation == '7':
@@ -965,18 +1080,17 @@ def main():
                 sys.stdout = printFile
 
                 loadPackets(framesArr)
-                initTCP(http_packets)
+                initTCP(ftpD_packets)
 
                 printFile.close()
             elif operation == '8':
-                # printFile = open(f'.\\{PRINT_FILE}', 'w')
-                # sys.stdout = printFile
+                printFile = open(f'.\\{PRINT_FILE}', 'w')
+                sys.stdout = printFile
 
-                # loadPackets(frames)
-                # TFTP
+                loadPackets(framesArr)
+                initTFTP(tftp_packet_list)
 
-                # printFile.close()
-                pass
+                printFile.close()
             elif operation == '9':
                 printFile = open(f'.\\{PRINT_FILE}', 'w')
                 sys.stdout = printFile
