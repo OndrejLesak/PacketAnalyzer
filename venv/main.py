@@ -17,7 +17,7 @@ icmpTypes = {} # ICMP Types
 
 ipList = {} # list of all unique IP addresses
 
-http_packets = []
+http_packets = [] # TCP communication
 https_packets = []
 telnet_packets = []
 ssh_packets = []
@@ -25,10 +25,11 @@ ftpC_packets = []
 ftpD_packets = []
 tcp_packet_list = []
 
-tftp_packets = []
-icmp_packets = []
+tftp_packets = [] # TFTP communication
+tftp_packet_list = []
+icmp_packets = [] # ICMP communication
 icmp_packet_list = []
-arp_packets = []
+arp_packets = [] # ARP communication
 arp_packet_list = []
 
 class pcapFrame():
@@ -162,6 +163,101 @@ def findFrameType(frame: pcapFrame):
 def initFrame(frame: pcapFrame):
     frame.frameType = findFrameType(frame)
     return frame
+
+
+def emptyArrays():
+    global http_packets, https_packets, telnet_packets, ssh_packets, ftpC_packets, ftpD_packets, tcp_packet_list
+    global tftp_packets, tftp_packet_list, icmp_packets, icmp_packet_list, arp_packets, arp_packet_list
+
+    http_packets = []  # TCP communication
+    https_packets = []
+    telnet_packets = []
+    ssh_packets = []
+    ftpC_packets = []
+    ftpD_packets = []
+    tcp_packet_list = []
+
+    tftp_packets = []  # TFTP communication
+    tftp_packet_list = []
+    icmp_packets = []  # ICMP communication
+    icmp_packet_list = []
+    arp_packets = []  # ARP communication
+    arp_packet_list = []
+
+
+def loadPackets(frames):
+    emptyArrays()
+
+    if frames is not None:
+        for frame in frames:
+            frame = initFrame(frame)
+            rawPacket = frame.buffer
+
+            # ----------------- ETHERNET ---------------------
+            if frame.frameType == 'Ethernet II':
+                protocol_dec = int(str(hexlify(rawPacket[12:14]))[2:-1], 16)
+
+                if ethernetProt.get(protocol_dec) is not None:
+                    if protocol_dec == 2048:  # IPv4 protocol
+                        offsetIhl = protocol_dec = int(str(hexlify(rawPacket[14:15]))[3:-1], 16) * 4 + 14
+                        ipProtocol = ipProt.get(int(str(hexlify(rawPacket[23:24]))[2:-1], 16))
+
+                        sourceIP = composeIP(rawPacket[26:30])
+                        destIP = composeIP(rawPacket[30:34])
+
+                        if ipProtocol is not None:
+                            if ipProtocol == 'TCP':  # TCP protocol
+                                sourcePort = int(str(hexlify(rawPacket[offsetIhl:offsetIhl + 2]))[2:-1], 16)
+                                destPort = int(str(hexlify(rawPacket[offsetIhl + 2:offsetIhl + 4]))[2:-1], 16)
+                                wnProtocol = None
+                                if sourcePort > destPort:  # nested protocol
+                                    wnProtocol = wnProt[destPort] if wnProt.get(destPort) is not None else 'Unknown protocol'
+                                else:
+                                    wnProtocol = wnProt[sourcePort] if wnProt.get(sourcePort) is not None else 'Unknown protocol'
+
+                                tcpFrame = TCPComm(sourceIP, destIP, sourcePort, destPort, frame, int(str(hexlify(rawPacket[offsetIhl + 13:offsetIhl + 14]))[2:-1], 16))  # partial initialization of TCP communication
+
+                                if wnProtocol == 'HTTP':
+                                    http_packets.append(tcpFrame)
+                                elif wnProtocol == 'HTTPS (SS1)':
+                                    https_packets.append(tcpFrame)
+                                elif wnProtocol == 'TELNET':
+                                    telnet_packets.append(tcpFrame)
+                                elif wnProtocol == 'SSH':
+                                    ssh_packets.append(tcpFrame)
+                                elif wnProtocol == 'FTP-DATA':
+                                    ftpD_packets.append(tcpFrame)
+                                elif wnProtocol == 'FTP-CONTROL':
+                                    ftpC_packets.append(tcpFrame)
+
+                            elif ipProtocol == 'UDP':  # UDP protocol
+                                sourcePort = int(str(hexlify(rawPacket[offsetIhl:offsetIhl + 2]))[2:-1], 16)
+                                destPort = int(str(hexlify(rawPacket[offsetIhl + 2:offsetIhl + 4]))[2:-1], 16)
+                                wnProtocol = None
+
+                                wnProtocol = wnProt[destPort] if wnProt.get(destPort) is not None else 'Unknown protocol'  # edit so it can analyse nested communications
+
+                                if wnProtocol == 'TFTP':  # edit!
+                                    tftp_packets.append(frame)
+
+                            elif ipProtocol == 'ICMP':
+                                icmpType = int(str(hexlify(rawPacket[offsetIhl:offsetIhl + 1]))[2:-1], 16)
+
+                                icmpPacket = ICMPComm(sourceIP, destIP, icmpType, frame)
+                                icmp_packets.append(icmpPacket)
+
+                        else:
+                            print("Unknown protocol")
+
+                    elif protocol_dec == 2054:
+                        operation = int(str(hexlify(rawPacket[20:22]))[2:-1], 16)  # request/ reply
+                        senderMAC = composeMAC(rawPacket[22:28])
+                        senderIP = composeIP(rawPacket[28:32])
+                        targetMAC = composeMAC(rawPacket[32:38])
+                        targetIP = composeIP(rawPacket[38:42])
+
+                        arpPacket = ARPComm(operation, senderIP, senderMAC, targetIP, targetMAC, frame)
+                        arp_packets.append(arpPacket)
 
 
 def nestedProtocols(frame: pcapFrame):
@@ -380,8 +476,7 @@ def initTCP(communication):
                 print(f'Destination MAC address: {composeMAC(member.relatedFrame.buffer[:6])}')
 
                 protocol_dec = int(str(hexlify(member.relatedFrame.buffer[12:14]))[2:-1], 16)
-                print(ethernetProt[protocol_dec] if ethernetProt.get(
-                    protocol_dec) is not None else 'Unknown protocol')
+                print(ethernetProt[protocol_dec] if ethernetProt.get(protocol_dec) is not None else 'Unknown protocol')
 
                 if protocol_dec == 2048:
                     ipProtocol = ipProt.get(int(str(hexlify(member.relatedFrame.buffer[23:24]))[2:-1], 16))
@@ -745,22 +840,48 @@ def clearFile(path):
     file.close()
 
 
+def loadFile():
+    testFiles = None
+    file = None
+
+    try:
+        testFiles = os.listdir('.\\test-files')
+    except NotADirectoryError:
+        pass
+
+    try:
+        # FILE LOAD
+        while (not file):
+            file = input('The name of file you wish to open (include .pcap filename extension): ')
+            if not file in testFiles:
+                print('File does not exist')
+                file = None
+        print('=' * 100)
+    except FileNotFoundError:
+        print('File does not exist or is corrupted')
+        exit(1)
+
+    return file
+
+
 def menu():
     print(
-        '1 | Print all frames with information\n' +
+        '0 | Choose another file to analyse\n' +
+        '1 | Parts 1-3\n' +
+        '2 | Part 4a\n' +
+        '3 | Part 4b\n' +
+        '4 | Part 4c\n' +
+        '5 | Part 4d\n' +
+        '6 | Part 4e\n' +
+        '7 | Part 4f\n' +
+        '8 | Part 4g\n' +
+        '9 | Part 4h\n' +
+        '10 | Part 4i\n' +
         'q | Terminate the application\n'
     )
 
 
 def main():
-    global FILE
-    testFiles = None
-
-    try:
-       testFiles = os.listdir('.\\test-files')
-    except NotADirectoryError:
-        pass
-
     fillProtocols('.\\protocols\\ETHERNET_protocols.txt', ethernetProt) # ETHERNET PROTOCOLS
     fillProtocols('.\\protocols\\IEEE_protocols.txt', ieeeProt) # IEEE PROTOCOLS
     fillProtocols('.\\protocols\\IP_protocols.txt', ipProt) # IP PROTOCOLS
@@ -769,14 +890,10 @@ def main():
 
     # USER INTERFACE
     try:
-        # FILE LOAD
-        while(not FILE):
-            FILE = input('The name of file you wish to open (include .pcap filename extension): ')
-            if not FILE in testFiles:
-                print('File does not exist')
-                FILE = None
-        print('=' * 100)
+        global FILE
 
+        # load initial .pcap file
+        FILE = loadFile()
         frames = rdpcap(f'.\\test-files\\{FILE}')
         save_frames(frames)
 
@@ -786,28 +903,106 @@ def main():
             operation = input('Select operation: ')
             print()
 
-            if operation == '1':
+            if operation == '0':
+                FILE = None
+                FILE = loadFile()
+                frames = rdpcap(f'.\\test-files\\{FILE}')
+                save_frames(frames)
+                clearFile(f'\\{PRINT_FILE}')
+
+            elif operation == '1':
                 printFile = open(f'.\\{PRINT_FILE}', 'w')
                 sys.stdout = printFile
+                emptyArrays()
 
                 for x in framesArr:
                     comprehensivePrint(x)
                 printIPList()
 
-                # initTCP(http_packets)
-                # initARP(arp_packets)
+                printFile.close()
+            elif operation == '2':
+                printFile = open(f'.\\{PRINT_FILE}', 'w')
+                sys.stdout = printFile
+
+                loadPackets(framesArr)
+                initTCP(http_packets)
+
+                printFile.close()
+            elif operation == '3':
+                printFile = open(f'.\\{PRINT_FILE}', 'w')
+                sys.stdout = printFile
+
+                loadPackets(framesArr)
+                initTCP(http_packets)
+
+                printFile.close()
+            elif operation == '4':
+                printFile = open(f'.\\{PRINT_FILE}', 'w')
+                sys.stdout = printFile
+
+                loadPackets(framesArr)
+                initTCP(http_packets)
+
+                printFile.close()
+            elif operation == '5':
+                printFile = open(f'.\\{PRINT_FILE}', 'w')
+                sys.stdout = printFile
+
+                loadPackets(framesArr)
+                initTCP(http_packets)
+
+                printFile.close()
+            elif operation == '6':
+                printFile = open(f'.\\{PRINT_FILE}', 'w')
+                sys.stdout = printFile
+
+                loadPackets(framesArr)
+                initTCP(http_packets)
+
+                printFile.close()
+            elif operation == '7':
+                printFile = open(f'.\\{PRINT_FILE}', 'w')
+                sys.stdout = printFile
+
+                loadPackets(framesArr)
+                initTCP(http_packets)
+
+                printFile.close()
+            elif operation == '8':
+                # printFile = open(f'.\\{PRINT_FILE}', 'w')
+                # sys.stdout = printFile
+
+                # loadPackets(frames)
+                # TFTP
+
+                # printFile.close()
+                pass
+            elif operation == '9':
+                printFile = open(f'.\\{PRINT_FILE}', 'w')
+                sys.stdout = printFile
+
+                loadPackets(framesArr)
                 initICMP(icmp_packets)
 
                 printFile.close()
+            elif operation == '10':
+                printFile = open(f'.\\{PRINT_FILE}', 'w')
+                sys.stdout = printFile
+
+                loadPackets(framesArr)
+                initARP(arp_packets)
+
+                printFile.close()
+            elif operation == 'q':
+                break
+
+            if operation != '0':
                 sys.stdout = DEFAULT_STDOUT
 
                 # Open print FILE
                 print('Opening file...')
                 os.startfile(f'.\\{PRINT_FILE}')  # opens file with printed frames
-                time.sleep(2)
-
-            elif operation == 'q':
-                break
+                time.sleep(3)
 
             operation = None
 
