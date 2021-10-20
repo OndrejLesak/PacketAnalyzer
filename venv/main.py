@@ -46,7 +46,7 @@ class TCPComm():
         self.destIP = destIp
         self.srcPort = srcPort
         self.destPort = destPort
-        self.flags = flags
+        self.flags = str(bin(flags))[::-1][:-2] + '0000000000'
         self.isComplete = False
         self.relatedFrame = frame
         self.comm = [] # related communication packets
@@ -267,9 +267,6 @@ def loadPackets(frames):
                                 icmpPacket = ICMPComm(sourceIP, destIP, icmpType, frame)
                                 icmp_packets.append(icmpPacket)
 
-                        else:
-                            print("Unknown protocol")
-
                     elif protocol_dec == 2054:
                         operation = int(str(hexlify(rawPacket[20:22]))[2:-1], 16)  # request/ reply
                         senderMAC = composeMAC(rawPacket[22:28])
@@ -318,8 +315,7 @@ def nestedProtocols(frame: pcapFrame):
                                 wnProtocol = wnProt[sourcePort] if wnProt.get(sourcePort) is not None else 'Unknown protocol'
                             print(wnProtocol)
 
-                            tcpFrame = TCPComm(sourceIP, destIP, sourcePort, destPort,\
-                                               frame, int(str(hexlify(rawPacket[offsetIhl+13:offsetIhl+14]))[2:-1], 16)) # partial initialization of TCP communication
+                            tcpFrame = TCPComm(sourceIP, destIP, sourcePort, destPort,frame, int(str(hexlify(rawPacket[offsetIhl+13:offsetIhl+14]))[2:-1], 16)) # partial initialization of TCP communication
 
                             if wnProtocol == 'HTTP':
                                 http_packets.append(tcpFrame)
@@ -394,7 +390,7 @@ def nestedProtocols(frame: pcapFrame):
             print(f'DSAP: {ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else "Unknown"}', end = '\t')
             print(f'SSAP: {ieeeProt[protocolSSAP_dec] if ieeeProt.get(protocolSSAP_dec) is not None else "Unknown"}')
 
-            print(ieeeProt[protocolDSAP_dec] if ieeeProt.get(protocolDSAP_dec) is not None else 'Unknown protocol')  # nested protocol
+            print(ieeeProt[protocolSSAP_dec] if ieeeProt.get(protocolSSAP_dec) is not None else 'Unknown protocol')  # nested protocol
             etherType = int(str(hexlify(rawPacket[20:22]))[2:-1], 16)
             print(ethernetProt[etherType] if ethernetProt.get(etherType) is not None else 'Unknown EtherType')
 
@@ -424,18 +420,23 @@ def initTCP(communication):
         else:
             continue
 
-        tcp_packet_list.append(actPacket)
+        if len(actPacket.comm) >= 2:
+            tcp_packet_list.append(actPacket)
         temp_comm[packet] = None # empty the list
 
     # --------------------------- ANALYSIS ---------------------------
     if len(tcp_packet_list) > 0:
         for commun in tcp_packet_list:
             if len(commun.comm) >= 4:
-               if (commun.flags == 2 and commun.comm[0].flags == 18 and commun.comm[1].flags == 16):
-                   end1, end2, end3, end4 = commun.comm[-1].flags, commun.comm[-2].flags, commun.comm[-3].flags, commun.comm[-4].flags
+               if commun.flags[1] == '1' and (commun.comm[0].flags[1] == '1' and commun.comm[0].flags[4] == '1')  and commun.comm[1].flags[4] == '1': # SYN, SYN-ACK, ACK
+                    for i in range(2, len(commun.comm)):
+                        if i >= 5:
+                            end1, end2, end3, end4 = commun.comm[i].flags, commun.comm[i-1].flags, commun.comm[i-2].flags, commun.comm[i-3].flags
 
-                   if (end1 == 4 or end1 == 20 or (end1 == 16 and end2 == 17 and end3 == 17) or (end4 == 17 and end3 == 16 and end2 == 17 and end1 == 16)):
-                       commun.isComplete = True
+                            if end1[2] == '1' or \
+                               (end1[0] == '1' and (end2[0] == '1' and end2[4] == '1') and end3[4] == '1') or \
+                               ((end4[0] == '1' and end4[4] == '1') and end3[4] == '1' and (end2[0] == '1' and end2[4] == '1') and end1[4] == '1'):
+                                commun.isComplete = True
                else:
                    commun = None
 
@@ -583,8 +584,7 @@ def initTCP(communication):
 
                 # PACKET LENGTH
                 print(f'Frame pcapAPI length: {member.relatedFrame.frameLength}B')
-                print(
-                    f'Length of the frame transferred via media: {64 if member.relatedFrame.frameLength < 60 else member.relatedFrame.frameLength + 4}B')
+                print(f'Length of the frame transferred via media: {64 if member.relatedFrame.frameLength < 60 else member.relatedFrame.frameLength + 4}B')
 
                 # FRAME TYPE & (SRC && DEST MAC ADDRESSES)
                 print(member.relatedFrame.frameType)
@@ -780,7 +780,12 @@ def initICMP(communication):
         # FRAME TYPE & BYTE STREAM
         printBytes(actFrame, useSep = False)
 
-        for member in commu.comm:
+        if len(commu.comm) > 19:
+            temparr = commu.comm[:9] + commu.comm[-10:]
+        else:
+            temparr = commu.comm
+
+        for member in temparr:
             memberFrame = member.relatedFrame
             rawMemberPacket = memberFrame.buffer
 
@@ -862,7 +867,13 @@ def initTFTP(communication):
         printBytes(actFrame, useSep=False)
 
         if commu.comm is not None:
-            for member in commu.comm:
+
+            if len(commu.comm) > 19:
+                temparr = commu.comm[:9] + commu.comm[-10:]
+            else:
+                temparr = commu.comm
+
+            for member in temparr:
                 actMemFrame = member.relatedFrame
                 rawMemPacket = actMemFrame.buffer
 
@@ -870,8 +881,7 @@ def initTFTP(communication):
 
                 # PACKET LENGTH
                 print(f'Frame pcapAPI length: {actMemFrame.frameLength}B')
-                print(
-                    f'Length of the frame transferred via media: {64 if actMemFrame.frameLength < 60 else actMemFrame.frameLength + 4}B')
+                print(f'Length of the frame transferred via media: {64 if actMemFrame.frameLength < 60 else actMemFrame.frameLength + 4}B')
 
                 # FRAME TYPE & (SRC && DEST MAC ADDRESSES)
                 print(actMemFrame.frameType)
@@ -917,13 +927,14 @@ def printIPList():
     print(f'\nAdresa uzla s najvacsim poctom odoslanych packetov: {highestIP}\t {highestNumber} packetov')
 
 
-def fillProtocols(path, protocols): # TODO: make it refresh lists while program runs
+def fillProtocols(path, protocols):
     try:
         file = open(path, 'r')
         for line in file:
-            index = int(line[line.find(';')+1:line.rfind(';')])
-            val = line[line.rfind(';')+1:-1]
-            protocols[index] = val
+            if line != '\n':
+                index = int(line[line.find(';')+1:line.rfind(';')])
+                val = line[line.rfind(';')+1:-1]
+                protocols[index] = val
 
     except FileNotFoundError:
         print('Error opening file with protocols')
@@ -983,15 +994,15 @@ def menu():
     print(
         '0 | Choose another file to analyse\n' +
         '1 | Parts 1-3\n' +
-        '2 | Part 4a\n' +
-        '3 | Part 4b\n' +
-        '4 | Part 4c\n' +
-        '5 | Part 4d\n' +
-        '6 | Part 4e\n' +
-        '7 | Part 4f\n' +
-        '8 | Part 4g\n' +
-        '9 | Part 4h\n' +
-        '10 | Part 4i\n' +
+        '2 | Part 4a - HTTP\n' +
+        '3 | Part 4b - HTTPS\n' +
+        '4 | Part 4c - TELNET\n' +
+        '5 | Part 4d - SSH\n' +
+        '6 | Part 4e - FTP-CONTROL\n' +
+        '7 | Part 4f - FTP-DATA\n' +
+        '8 | Part 4g - TFTP\n' +
+        '9 | Part 4h - ICMP\n' +
+        '10 | Part 4i - ARP\n' +
         'q | Terminate the application\n'
     )
 
@@ -1000,12 +1011,13 @@ def main():
     fillProtocols('.\\protocols\\ETHERNET_protocols.txt', ethernetProt) # ETHERNET PROTOCOLS
     fillProtocols('.\\protocols\\IEEE_protocols.txt', ieeeProt) # IEEE PROTOCOLS
     fillProtocols('.\\protocols\\IP_protocols.txt', ipProt) # IP PROTOCOLS
-    fillProtocols('.\\protocols\\WN_protocols.txt', wnProt) # TCP PROTOCOLS
+    fillProtocols('.\\protocols\\WK_protocols.txt', wnProt) # TCP PROTOCOLS
     fillProtocols('.\\protocols\\ICMP_types.txt', icmpTypes) # ICMP TYPES
 
     # USER INTERFACE
     try:
         global FILE
+        global framesArr
 
         # load initial .pcap file
         FILE = loadFile()
@@ -1020,6 +1032,7 @@ def main():
 
             if operation == '0':
                 FILE = None
+                framesArr = []
                 FILE = loadFile()
                 frames = rdpcap(f'.\\test-files\\{FILE}')
                 save_frames(frames)
@@ -1109,8 +1122,10 @@ def main():
                 printFile.close()
             elif operation == 'q':
                 break
+            else:
+                continue
 
-            if operation != '0':
+            if operation != '0' and os.path.exists(f'.\\{PRINT_FILE}'):
                 sys.stdout = DEFAULT_STDOUT
 
                 # Open print FILE
