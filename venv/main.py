@@ -32,6 +32,8 @@ icmp_packet_list = []
 arp_packets = [] # ARP communication
 arp_packet_list = []
 
+rip_packet = []
+
 class pcapFrame():
     def __init__(self, num, buffer):
         self.num = num
@@ -98,6 +100,15 @@ class TFTPComm():
 
     def append_comm(self, packet):
         self.comm.append(packet)
+
+
+class RIPComm():
+    def __init__(self, srcIP, destIP, srcPort, destPort, frame):
+        self.srcIP = srcIP
+        self.destIP = destIP
+        self.srcPort = srcPort
+        self.destPort = destPort
+        self.relatedFrame = frame
 
 
 def save_frames(frames):
@@ -260,6 +271,10 @@ def loadPackets(frames):
                                                 or packet.srcIP == destIP and packet.destIP == sourceIP and packet.srcPort == destPort:
                                                     tftpPacket = TFTPComm(sourceIP, destIP, sourcePort, destPort, frame)
                                                     packet.append_comm(tftpPacket)
+
+                                if wnProtocol == 'RIP':
+                                    ripPacket = RIPComm(sourceIP, destIP, sourcePort, destPort, frame)
+                                    rip_packet.append(ripPacket)
 
                             elif ipProtocol == 'ICMP':
                                 icmpType = int(str(hexlify(rawPacket[offsetIhl:offsetIhl + 1]))[2:-1], 16)
@@ -913,6 +928,54 @@ def initTFTP(communication):
         cnt += 1
 
 
+def initRIP(packets):
+    if packets is not None:
+        cnt = 0
+        for x in packets:
+            cnt += 1
+
+            actFrame = x.relatedFrame
+            rawFrame = actFrame.buffer
+
+            print(f'\n================= RIP PACKETS =================')
+            print('Frame number:', actFrame.num)  # row number of a frame
+
+            # PACKET LENGTH
+            print(f'Frame pcapAPI length: {actFrame.frameLength}B')
+            print(
+                f'Length of the frame transferred via media: {64 if actFrame.frameLength < 60 else actFrame.frameLength + 4}B')
+
+            # FRAME TYPE & (SRC && DEST MAC ADDRESSES)
+            print(actFrame.frameType)
+            print(f'Source MAC address: {composeMAC(rawFrame[6:12])}')
+            print(f'Destination MAC address: {composeMAC(rawFrame[:6])}')
+
+            if actFrame.frameType == 'Ethernet II':
+                protocol_dec = int(str(hexlify(actFrame.buffer[12:14]))[2:-1], 16)
+                print(ethernetProt[protocol_dec] if ethernetProt.get(protocol_dec) is not None else 'Unknown protocol')
+
+                if protocol_dec == 2048:
+                    ipProtocol = ipProt.get(int(str(hexlify(rawFrame[23:24]))[2:-1], 16))
+
+                    print(f'Source IP: {x.srcIP}')
+                    print(f'Destination IP: {x.destIP}')
+
+                    if ipProtocol is not None:
+                        print(ipProtocol)
+
+                        if ipProtocol == 'UDP':
+                            print(f'Source port: {x.srcPort}')
+                            print(f'Destination port: {x.destPort}')
+                            wnProtocol = wnProt[x.destPort] if wnProt.get(x.destPort) is not None else ''  # edit so it can analyse nested communications
+                            print(wnProtocol)  # nested protocol
+
+
+            # FRAME TYPE & BYTE STREAM
+            printBytes(actFrame)
+        print(f'Detekovanych RIP protokolov: {cnt} ')
+
+
+
 def printIPList():
     highestNumber = 0
     highestIP = None
@@ -1003,6 +1066,7 @@ def menu():
         '8 | Part 4g - TFTP\n' +
         '9 | Part 4h - ICMP\n' +
         '10 | Part 4i - ARP\n' +
+        '11 | RIP packets\n' +
         'q | Terminate the application\n'
     )
 
@@ -1118,6 +1182,14 @@ def main():
 
                 loadPackets(framesArr)
                 initARP(arp_packets)
+
+                printFile.close()
+            elif operation == '11':
+                printFile = open(f'.\\{PRINT_FILE}', 'w')
+                sys.stdout = printFile
+
+                loadPackets(framesArr)
+                initRIP(rip_packet)
 
                 printFile.close()
             elif operation == 'q':
